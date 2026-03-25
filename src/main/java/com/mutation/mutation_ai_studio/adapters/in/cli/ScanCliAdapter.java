@@ -36,8 +36,9 @@ public class ScanCliAdapter implements ApplicationRunner {
 
         boolean verbose = hasVerbose(sourceArgs);
         boolean focusTestable = hasFocusTestable(sourceArgs);
+        ScanCategory onlyCategory = resolveCategoryFilter(sourceArgs);
 
-        outputFormatter.print(projectRoot, classes, verbose, focusTestable);
+        outputFormatter.print(projectRoot, classes, verbose, focusTestable, onlyCategory);
     }
 
     private boolean hasVerbose(String[] sourceArgs) {
@@ -68,6 +69,25 @@ public class ScanCliAdapter implements ApplicationRunner {
         return false;
     }
 
+    private ScanCategory resolveCategoryFilter(String[] sourceArgs) {
+        for (int i = 1; i < sourceArgs.length; i++) {
+            String current = sourceArgs[i];
+            if (current.startsWith("--")) {
+                if ("--focus".equals(current) && i + 1 < sourceArgs.length) {
+                    i++;
+                }
+                continue;
+            }
+
+            ScanCategory maybeCategory = ScanCategory.fromToken(current).orElse(null);
+            if (maybeCategory != null) {
+                return maybeCategory;
+            }
+        }
+
+        return null;
+    }
+
     private Path resolveProjectRoot(String[] sourceArgs) {
         for (int i = 1; i < sourceArgs.length; i++) {
             String current = sourceArgs[i];
@@ -76,6 +96,10 @@ public class ScanCliAdapter implements ApplicationRunner {
                 if ("--focus".equals(current) && i + 1 < sourceArgs.length) {
                     i++;
                 }
+                continue;
+            }
+
+            if (ScanCategory.fromToken(current).isPresent()) {
                 continue;
             }
 

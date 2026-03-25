@@ -111,6 +111,46 @@ java -jar /caminho/target/mutation-ai-studio-0.0.1-SNAPSHOT.jar scan . --verbose
 
 ---
 
+## 4) `scan <categoria>`
+
+Filtra a saída para retornar **somente uma categoria**.
+
+Categorias suportadas:
+
+- `service`
+- `core`
+- `controller`
+- `repository`
+- `entity`
+- `dto`
+- `config`
+- `security`
+- `other`
+
+Exemplos:
+
+```bash
+mutation-ai scan service
+mutation-ai scan controller
+mutation-ai scan dto
+```
+
+Com caminho explícito:
+
+```bash
+mutation-ai scan /caminho/projeto-alvo service
+```
+
+Com detalhes completos (verbose) no filtro:
+
+```bash
+mutation-ai scan dto --verbose
+# ou
+java -jar /caminho/target/mutation-ai-studio-0.0.1-SNAPSHOT.jar scan . dto --verbose
+```
+
+---
+
 ## Regras atuais do scan
 
 A descoberta de classes (lógica funcional) permanece:
@@ -122,7 +162,7 @@ A descoberta de classes (lógica funcional) permanece:
   - `package-info.java`
   - `module-info.java`
 
-A nova parte adicionada foi apenas de **formatação de saída no terminal**.
+A nova parte adicionada foi apenas de **formatação de saída no terminal** e **filtro de exibição por categoria**.
 
 ---
 

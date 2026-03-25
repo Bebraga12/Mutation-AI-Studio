@@ -16,11 +16,14 @@ public class MutationAiStudioApplication {
 
 		if (cliScanMode) {
 			application.setWebApplicationType(WebApplicationType.NONE);
+			application.setBannerMode(org.springframework.boot.Banner.Mode.OFF);
 			application.setDefaultProperties(Map.of(
 					"spring.autoconfigure.exclude",
 					"org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
 							+ "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration,"
-							+ "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration"
+							+ "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration",
+					"logging.level.root", "ERROR",
+					"spring.main.log-startup-info", "false"
 			));
 		}
 

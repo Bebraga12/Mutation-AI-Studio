@@ -8,7 +8,10 @@ import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class ScanCliAdapter implements ApplicationRunner {
@@ -30,13 +33,50 @@ public class ScanCliAdapter implements ApplicationRunner {
 
         Path projectRoot = resolveProjectRoot(commands);
         List<JavaClassCandidate> classes = scanProjectUseCase.scan(projectRoot);
+        printScanResult(projectRoot, classes);
+    }
 
-        classes.forEach(candidate -> System.out.printf(
-                "%s | %s | %s%n",
-                candidate.className(),
-                candidate.fullyQualifiedName(),
-                candidate.relativePath()
-        ));
+    private void printScanResult(Path projectRoot, List<JavaClassCandidate> classes) {
+        System.out.printf("🔎 Scan: %s%n", projectRoot);
+
+        if (classes.isEmpty()) {
+            System.out.println("📦 Nenhuma classe Java encontrada em src/main/java.");
+            return;
+        }
+
+        System.out.printf("📦 %d classes encontradas%n%n", classes.size());
+
+        Map<String, List<JavaClassCandidate>> byDirectory = classes.stream()
+                .sorted(Comparator.comparing(JavaClassCandidate::relativePath))
+                .collect(LinkedHashMap::new,
+                        (map, candidate) -> map.computeIfAbsent(parentDirectory(candidate.relativePath()), k -> new java.util.ArrayList<>()).add(candidate),
+                        LinkedHashMap::putAll);
+
+        byDirectory.forEach((directory, candidates) -> {
+            System.out.println(directory);
+            candidates.forEach(candidate -> System.out.printf("  - %-45s (%s)%n",
+                    fileName(candidate.relativePath()),
+                    candidate.className()));
+            System.out.println();
+        });
+    }
+
+    private String parentDirectory(String relativePath) {
+        int lastSlash = relativePath.lastIndexOf('/');
+        if (lastSlash < 0) {
+            return ".";
+        }
+
+        return relativePath.substring(0, lastSlash);
+    }
+
+    private String fileName(String relativePath) {
+        int lastSlash = relativePath.lastIndexOf('/');
+        if (lastSlash < 0) {
+            return relativePath;
+        }
+
+        return relativePath.substring(lastSlash + 1);
     }
 
     private Path resolveProjectRoot(List<String> commands) {

@@ -34,3 +34,9 @@ build/
 
 ### Configurações Locais ###
 src/main/resources/application-local.properties
+AGENTS.md
+IDENTITY.md
+HEARTBEAT.md
+SOUL.md
+TOOLS.md
+USER.md

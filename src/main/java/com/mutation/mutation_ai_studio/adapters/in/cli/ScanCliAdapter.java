@@ -8,10 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 @Component
 public class ScanCliAdapter implements ApplicationRunner {
@@ -19,9 +16,11 @@ public class ScanCliAdapter implements ApplicationRunner {
     private static final String SCAN_COMMAND = "scan";
 
     private final ScanProjectUseCase scanProjectUseCase;
+    private final ScanOutputFormatter outputFormatter;
 
     public ScanCliAdapter(ScanProjectUseCase scanProjectUseCase) {
         this.scanProjectUseCase = scanProjectUseCase;
+        this.outputFormatter = new ScanOutputFormatter();
     }
 
     @Override
@@ -31,59 +30,58 @@ public class ScanCliAdapter implements ApplicationRunner {
             return;
         }
 
-        Path projectRoot = resolveProjectRoot(commands);
+        String[] sourceArgs = args.getSourceArgs();
+        Path projectRoot = resolveProjectRoot(sourceArgs);
         List<JavaClassCandidate> classes = scanProjectUseCase.scan(projectRoot);
-        printScanResult(projectRoot, classes);
+
+        boolean verbose = hasVerbose(sourceArgs);
+        boolean focusTestable = hasFocusTestable(sourceArgs);
+
+        outputFormatter.print(projectRoot, classes, verbose, focusTestable);
     }
 
-    private void printScanResult(Path projectRoot, List<JavaClassCandidate> classes) {
-        System.out.printf("🔎 Scan: %s%n", projectRoot);
-
-        if (classes.isEmpty()) {
-            System.out.println("📦 Nenhuma classe Java encontrada em src/main/java.");
-            return;
+    private boolean hasVerbose(String[] sourceArgs) {
+        for (String arg : sourceArgs) {
+            if ("--verbose".equalsIgnoreCase(arg)) {
+                return true;
+            }
         }
-
-        System.out.printf("📦 %d classes encontradas%n%n", classes.size());
-
-        Map<String, List<JavaClassCandidate>> byDirectory = classes.stream()
-                .sorted(Comparator.comparing(JavaClassCandidate::relativePath))
-                .collect(LinkedHashMap::new,
-                        (map, candidate) -> map.computeIfAbsent(parentDirectory(candidate.relativePath()), k -> new java.util.ArrayList<>()).add(candidate),
-                        LinkedHashMap::putAll);
-
-        byDirectory.forEach((directory, candidates) -> {
-            System.out.println(directory);
-            candidates.forEach(candidate -> System.out.printf("  - %-45s (%s)%n",
-                    fileName(candidate.relativePath()),
-                    candidate.className()));
-            System.out.println();
-        });
+        return false;
     }
 
-    private String parentDirectory(String relativePath) {
-        int lastSlash = relativePath.lastIndexOf('/');
-        if (lastSlash < 0) {
-            return ".";
-        }
+    private boolean hasFocusTestable(String[] sourceArgs) {
+        for (int i = 0; i < sourceArgs.length; i++) {
+            String current = sourceArgs[i];
+            if (current.startsWith("--focus=")) {
+                String value = current.substring("--focus=".length());
+                if ("testable".equalsIgnoreCase(value)) {
+                    return true;
+                }
+            }
 
-        return relativePath.substring(0, lastSlash);
+            if ("--focus".equalsIgnoreCase(current) && i + 1 < sourceArgs.length) {
+                if ("testable".equalsIgnoreCase(sourceArgs[i + 1])) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
-    private String fileName(String relativePath) {
-        int lastSlash = relativePath.lastIndexOf('/');
-        if (lastSlash < 0) {
-            return relativePath;
+    private Path resolveProjectRoot(String[] sourceArgs) {
+        for (int i = 1; i < sourceArgs.length; i++) {
+            String current = sourceArgs[i];
+
+            if (current.startsWith("--")) {
+                if ("--focus".equals(current) && i + 1 < sourceArgs.length) {
+                    i++;
+                }
+                continue;
+            }
+
+            return Paths.get(current).toAbsolutePath().normalize();
         }
 
-        return relativePath.substring(lastSlash + 1);
-    }
-
-    private Path resolveProjectRoot(List<String> commands) {
-        if (commands.size() < 2) {
-            return Paths.get("").toAbsolutePath().normalize();
-        }
-
-        return Paths.get(commands.get(1)).toAbsolutePath().normalize();
+        return Paths.get("").toAbsolutePath().normalize();
     }
 }

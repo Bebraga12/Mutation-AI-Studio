@@ -12,19 +12,24 @@ import java.util.Map;
 
 final class ScanOutputFormatter {
 
-    private static final List<Category> ORDER = List.of(
-            Category.SERVICE,
-            Category.CORE,
-            Category.CONTROLLER,
-            Category.OTHER,
-            Category.DTO,
-            Category.ENTITY,
-            Category.REPOSITORY,
-            Category.CONFIG,
-            Category.SECURITY
+    private static final List<ScanCategory> ORDER = List.of(
+            ScanCategory.SERVICE,
+            ScanCategory.CORE,
+            ScanCategory.CONTROLLER,
+            ScanCategory.OTHER,
+            ScanCategory.DTO,
+            ScanCategory.ENTITY,
+            ScanCategory.REPOSITORY,
+            ScanCategory.CONFIG,
+            ScanCategory.SECURITY
     );
 
-    void print(Path projectRoot, List<JavaClassCandidate> classes, boolean verbose, boolean focusTestable) {
+    void print(Path projectRoot,
+               List<JavaClassCandidate> classes,
+               boolean verbose,
+               boolean focusTestable,
+               ScanCategory onlyCategory) {
+
         if (classes.isEmpty()) {
             System.out.printf("Projeto: %s%n", projectRoot);
             System.out.println("0 classes encontradas");
@@ -32,7 +37,12 @@ final class ScanOutputFormatter {
             return;
         }
 
-        Map<Category, List<JavaClassCandidate>> grouped = groupByCategory(classes);
+        Map<ScanCategory, List<JavaClassCandidate>> grouped = groupByCategory(classes);
+
+        if (onlyCategory != null) {
+            printOnlyCategory(projectRoot, classes, grouped, onlyCategory, verbose);
+            return;
+        }
 
         if (verbose) {
             printVerbose(projectRoot, classes, grouped);
@@ -47,9 +57,9 @@ final class ScanOutputFormatter {
         printDefault(projectRoot, classes, grouped);
     }
 
-    private Map<Category, List<JavaClassCandidate>> groupByCategory(List<JavaClassCandidate> classes) {
-        Map<Category, List<JavaClassCandidate>> grouped = new EnumMap<>(Category.class);
-        for (Category category : Category.values()) {
+    private Map<ScanCategory, List<JavaClassCandidate>> groupByCategory(List<JavaClassCandidate> classes) {
+        Map<ScanCategory, List<JavaClassCandidate>> grouped = new EnumMap<>(ScanCategory.class);
+        for (ScanCategory category : ScanCategory.values()) {
             grouped.put(category, new ArrayList<>());
         }
 
@@ -60,61 +70,97 @@ final class ScanOutputFormatter {
         return grouped;
     }
 
-    private void printDefault(Path projectRoot, List<JavaClassCandidate> classes, Map<Category, List<JavaClassCandidate>> grouped) {
+    private void printOnlyCategory(Path projectRoot,
+                                   List<JavaClassCandidate> allClasses,
+                                   Map<ScanCategory, List<JavaClassCandidate>> grouped,
+                                   ScanCategory onlyCategory,
+                                   boolean verbose) {
+
+        List<JavaClassCandidate> selected = grouped.get(onlyCategory);
+
+        System.out.printf("Projeto: %s%n", projectRoot);
+        System.out.printf("%d classes encontradas | filtro: %s (%d)%n%n",
+                allClasses.size(),
+                onlyCategory.key(),
+                selected.size());
+
+        if (selected.isEmpty()) {
+            System.out.println("Nenhuma classe encontrada para essa categoria.");
+            return;
+        }
+
+        if (verbose) {
+            selected.forEach(candidate -> System.out.printf(" - %s | %s | %s%n",
+                    candidate.className(),
+                    candidate.fullyQualifiedName(),
+                    candidate.relativePath()));
+            return;
+        }
+
+        selected.stream()
+                .map(JavaClassCandidate::className)
+                .forEach(name -> System.out.printf(" - %s%n", name));
+
+        System.out.println();
+        System.out.println("Use --verbose para ver FQCN e path.");
+    }
+
+    private void printDefault(Path projectRoot, List<JavaClassCandidate> classes, Map<ScanCategory, List<JavaClassCandidate>> grouped) {
         System.out.printf("Projeto: %s%n", projectRoot);
         System.out.printf("%d classes encontradas%n%n", classes.size());
 
         System.out.println("Alta prioridade para testes");
-        printCategoryWithNames(grouped, Category.SERVICE);
-        printCategoryWithNames(grouped, Category.CORE);
+        printCategoryWithNames(grouped, ScanCategory.SERVICE);
+        printCategoryWithNames(grouped, ScanCategory.CORE);
 
         System.out.println("Média prioridade");
-        printCategoryWithNames(grouped, Category.CONTROLLER);
+        printCategoryWithNames(grouped, ScanCategory.CONTROLLER);
 
         System.out.println("Baixa prioridade");
-        printCategoryCountOnly(grouped, Category.DTO);
-        printCategoryCountOnly(grouped, Category.ENTITY);
-        printCategoryCountOnly(grouped, Category.REPOSITORY);
-        printCombinedCount(grouped, "Config/Security", Category.CONFIG, Category.SECURITY);
+        printCategoryCountOnly(grouped, ScanCategory.DTO);
+        printCategoryCountOnly(grouped, ScanCategory.ENTITY);
+        printCategoryCountOnly(grouped, ScanCategory.REPOSITORY);
+        printCombinedCount(grouped, "Config/Security", ScanCategory.CONFIG, ScanCategory.SECURITY);
 
         System.out.println();
         System.out.println("Use --verbose para listar todas as classes.");
         System.out.println("Use --focus testable para ver apenas classes mais testáveis.");
+        System.out.println("Use scan <categoria> para filtrar (service, core, controller, repository, entity, dto, config, security, other).");
     }
 
-    private void printFocusTestable(Path projectRoot, List<JavaClassCandidate> classes, Map<Category, List<JavaClassCandidate>> grouped) {
+    private void printFocusTestable(Path projectRoot, List<JavaClassCandidate> classes, Map<ScanCategory, List<JavaClassCandidate>> grouped) {
         List<JavaClassCandidate> focused = new ArrayList<>();
-        focused.addAll(grouped.get(Category.SERVICE));
-        focused.addAll(grouped.get(Category.CORE));
+        focused.addAll(grouped.get(ScanCategory.SERVICE));
+        focused.addAll(grouped.get(ScanCategory.CORE));
 
         System.out.printf("Projeto: %s%n", projectRoot);
         System.out.printf("%d classes encontradas | %d classes com foco testável%n%n", classes.size(), focused.size());
 
         System.out.println("Foco: classes mais relevantes para geração de testes");
-        printCategoryWithNames(grouped, Category.SERVICE);
-        printCategoryWithNames(grouped, Category.CORE);
+        printCategoryWithNames(grouped, ScanCategory.SERVICE);
+        printCategoryWithNames(grouped, ScanCategory.CORE);
 
         System.out.println("Dica: use --verbose para ver a listagem completa por categoria.");
     }
 
-    private void printVerbose(Path projectRoot, List<JavaClassCandidate> classes, Map<Category, List<JavaClassCandidate>> grouped) {
+    private void printVerbose(Path projectRoot, List<JavaClassCandidate> classes, Map<ScanCategory, List<JavaClassCandidate>> grouped) {
         System.out.printf("Projeto: %s%n", projectRoot);
         System.out.printf("%d classes encontradas%n%n", classes.size());
 
         System.out.println("Resumo por categoria:");
-        for (Category category : ORDER) {
+        for (ScanCategory category : ORDER) {
             int count = grouped.get(category).size();
-            System.out.printf(" - %s: %d%n", category.key, count);
+            System.out.printf(" - %s: %d%n", category.key(), count);
         }
 
         System.out.println();
-        for (Category category : ORDER) {
+        for (ScanCategory category : ORDER) {
             List<JavaClassCandidate> candidates = grouped.get(category);
             if (candidates.isEmpty()) {
                 continue;
             }
 
-            System.out.printf("%s (%d)%n", category.key, candidates.size());
+            System.out.printf("%s (%d)%n", category.key(), candidates.size());
             candidates.forEach(candidate -> System.out.printf(" - %s | %s | %s%n",
                     candidate.className(),
                     candidate.fullyQualifiedName(),
@@ -123,55 +169,58 @@ final class ScanOutputFormatter {
         }
     }
 
-    private void printCategoryWithNames(Map<Category, List<JavaClassCandidate>> grouped, Category category) {
+    private void printCategoryWithNames(Map<ScanCategory, List<JavaClassCandidate>> grouped, ScanCategory category) {
         List<JavaClassCandidate> candidates = grouped.get(category);
-        System.out.printf(" %s (%d)%n", category.label, candidates.size());
+        System.out.printf(" %s (%d)%n", category.label(), candidates.size());
         candidates.stream()
                 .map(JavaClassCandidate::className)
                 .forEach(name -> System.out.printf(" - %s%n", name));
     }
 
-    private void printCategoryCountOnly(Map<Category, List<JavaClassCandidate>> grouped, Category category) {
-        System.out.printf(" %s (%d)%n", category.label, grouped.get(category).size());
+    private void printCategoryCountOnly(Map<ScanCategory, List<JavaClassCandidate>> grouped, ScanCategory category) {
+        System.out.printf(" %s (%d)%n", category.label(), grouped.get(category).size());
     }
 
-    private void printCombinedCount(Map<Category, List<JavaClassCandidate>> grouped, String label, Category first, Category second) {
+    private void printCombinedCount(Map<ScanCategory, List<JavaClassCandidate>> grouped,
+                                    String label,
+                                    ScanCategory first,
+                                    ScanCategory second) {
         int total = grouped.get(first).size() + grouped.get(second).size();
         System.out.printf(" %s (%d)%n", label, total);
     }
 
-    private Category classify(JavaClassCandidate candidate) {
+    private ScanCategory classify(JavaClassCandidate candidate) {
         String className = candidate.className().toLowerCase(Locale.ROOT);
         String fqcn = candidate.fullyQualifiedName().toLowerCase(Locale.ROOT);
         String path = candidate.relativePath().toLowerCase(Locale.ROOT);
         String full = String.join(" ", className, fqcn, path);
 
         if (containsAny(full, "service")) {
-            return Category.SERVICE;
+            return ScanCategory.SERVICE;
         }
         if (containsAny(full, "controller")) {
-            return Category.CONTROLLER;
+            return ScanCategory.CONTROLLER;
         }
         if (containsAny(full, "repository", "repo")) {
-            return Category.REPOSITORY;
+            return ScanCategory.REPOSITORY;
         }
         if (containsAny(full, "entity")) {
-            return Category.ENTITY;
+            return ScanCategory.ENTITY;
         }
         if (containsAny(full, "dto", "request", "response")) {
-            return Category.DTO;
+            return ScanCategory.DTO;
         }
         if (containsAny(full, "security", "auth", "jwt")) {
-            return Category.SECURITY;
+            return ScanCategory.SECURITY;
         }
         if (containsAny(full, "config", "configuration", "properties")) {
-            return Category.CONFIG;
+            return ScanCategory.CONFIG;
         }
         if (containsAny(full, "core", "generator", "renderer", "validator", "calculator", "facade", "usecase", "use_case", "use-case")) {
-            return Category.CORE;
+            return ScanCategory.CORE;
         }
 
-        return Category.OTHER;
+        return ScanCategory.OTHER;
     }
 
     private boolean containsAny(String value, String... tokens) {
@@ -181,25 +230,5 @@ final class ScanOutputFormatter {
             }
         }
         return false;
-    }
-
-    private enum Category {
-        SERVICE("service", "Services"),
-        CORE("core", "Core"),
-        CONTROLLER("controller", "Controllers"),
-        REPOSITORY("repository", "Repositories"),
-        ENTITY("entity", "Entities"),
-        DTO("dto", "DTOs"),
-        CONFIG("config", "Config"),
-        SECURITY("security", "Security"),
-        OTHER("other", "Other");
-
-        private final String key;
-        private final String label;
-
-        Category(String key, String label) {
-            this.key = key;
-            this.label = label;
-        }
     }
 }

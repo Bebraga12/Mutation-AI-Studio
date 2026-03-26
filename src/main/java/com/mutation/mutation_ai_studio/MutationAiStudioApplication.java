@@ -36,7 +36,15 @@ public class MutationAiStudioApplication {
 	}
 
 	private static boolean isCliScanMode(String[] args) {
-		return args != null && args.length > 0 && "scan".equals(args[0]);
+		if (args == null || args.length == 0) {
+			return false;
+		}
+
+		String command = args[0];
+		return "scan".equals(command)
+				|| "select".equals(command)
+				|| "s".equals(command)
+				|| "status".equals(command);
 	}
 
 }

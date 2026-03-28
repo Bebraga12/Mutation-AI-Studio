@@ -2,8 +2,6 @@
 
 Plataforma local para geração automatizada de testes unitários em projetos Java, com foco em qualidade (cobertura e mutation testing) e arquitetura hexagonal.
 
-> Status atual: o comando CLI implementado até agora é o **`scan`**.
-
 ---
 
 ## Visão Geral

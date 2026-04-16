@@ -32,8 +32,28 @@ Tudo com execução local, sem dependência de cloud.
 
 ```bash
 ./mvnw clean install
-./mvnw -DskipTests package
 ```
+
+## Usar a CLI (sem instalar global)
+
+Depois do build, use o wrapper do projeto:
+
+```bash
+./mutation-ai scan .
+./mutation-ai select .
+./mutation-ai status .
+```
+
+### Colocar no PATH (opcional)
+
+No terminal atual:
+
+```bash
+source scripts/env.sh
+mutation-ai scan .
+```
+
+Para deixar permanente, adicione a linha `source <caminho>/Mutation-AI-Studio/scripts/env.sh` no seu `~/.zshrc` ou `~/.bashrc`.
 
 ---
 
@@ -138,12 +158,42 @@ Se não existir seleção, mostra mensagem amigável para executar `select`.
 
 ---
 
+## 4) `create test` e alias `c t`
+
+Lê a seleção atual, gera um prompt por classe para criação automática de testes, mostra um resumo operacional e salva cada prompt em arquivo.
+
+```bash
+mutation-ai create test
+mutation-ai c t
+mutation-ai create test .
+mutation-ai create test /caminho/projeto-alvo
+```
+
+Saída:
+- caminho do projeto
+- total de classes selecionadas
+- total de prompts gerados
+- para cada classe: arquivo fonte, dependências identificadas, preview do prompt e caminho do arquivo salvo
+
+Características do prompt:
+- um prompt por classe selecionada
+- inclui fully qualified name e caminho relativo do arquivo
+- inclui o código fonte completo da classe alvo
+- inclui dependências identificadas, priorizando construtor
+- exige saída estrita com apenas código Java
+- prepara geração compatível com `src/test/java`
+
+Se não existir seleção, o comando orienta executar `mutation-ai select .` antes.
+
+---
+
 ## Persistência da seleção
 
 Arquivo salvo no projeto alvo:
 
 ```text
 <projectRoot>/.mutation-ai/selection.json
+<projectRoot>/.mutation-ai/prompts/create-test-<timestamp>/<Classe>.md
 ```
 
 Se a pasta/arquivo não existir, é criado automaticamente.
@@ -183,7 +233,7 @@ A lógica de descoberta permanece:
 ## Estrutura arquitetural (resumo)
 
 ```text
-adapters/in/cli          -> comandos scan/select/status
+adapters/in/cli          -> comandos scan/select/status/create test
 application/usecase      -> casos de uso
 application/port/in      -> contratos de entrada
 application/port/out     -> contratos de saída
@@ -195,5 +245,5 @@ domain/model             -> modelos de domínio
 
 ## Observações
 
-- Modos CLI (`scan`, `select`, `s`, `status`) rodam sem web e encerram ao final.
+- Modos CLI (`scan`, `select`, `s`, `status`, `create`, `c`) rodam sem web e encerram ao final.
 - Prefira sempre `./mvnw` para build/execução local.

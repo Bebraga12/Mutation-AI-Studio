@@ -8,5 +8,7 @@ public interface SelectTargetsUseCase {
 
     SelectionSnapshot selectAll(Path projectRoot);
 
+    SelectionSnapshot selectByCategory(Path projectRoot, String category);
+
     SelectionSnapshot selectSingle(Path projectRoot, String classNameOrFqcn);
 }

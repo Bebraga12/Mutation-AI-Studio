@@ -51,9 +51,16 @@ public class SelectCliAdapter implements ApplicationRunner {
         }
 
         String classTarget = resolveClassTarget(sourceArgs);
-        SelectionSnapshot selection = classTarget == null
-                ? selectTargetsUseCase.selectAll(projectRoot)
-                : selectTargetsUseCase.selectSingle(projectRoot, classTarget);
+        ScanCategory categoryTarget = resolveCategoryTarget(sourceArgs);
+
+        SelectionSnapshot selection;
+        if (classTarget == null && categoryTarget == null) {
+            selection = selectTargetsUseCase.selectAll(projectRoot);
+        } else if (categoryTarget != null && classTarget == null) {
+            selection = selectTargetsUseCase.selectByCategory(projectRoot, categoryTarget.key());
+        } else {
+            selection = selectTargetsUseCase.selectSingle(projectRoot, classTarget);
+        }
 
         printSummary(projectRoot, selection);
     }
@@ -145,6 +152,10 @@ public class SelectCliAdapter implements ApplicationRunner {
                 return null;
             }
 
+            if (ScanCategory.fromToken(single).isPresent()) {
+                return null;
+            }
+
             Path maybePath = Paths.get(single).toAbsolutePath().normalize();
             if (Files.exists(maybePath) && Files.isDirectory(maybePath)) {
                 return null;
@@ -153,7 +164,25 @@ public class SelectCliAdapter implements ApplicationRunner {
             return single;
         }
 
-        return positionals.get(1);
+        String candidate = positionals.get(1);
+        if (ScanCategory.fromToken(candidate).isPresent()) {
+            return null;
+        }
+
+        return candidate;
+    }
+
+    private ScanCategory resolveCategoryTarget(String[] sourceArgs) {
+        List<String> positionals = extractPositionalArgs(sourceArgs);
+        if (positionals.isEmpty()) {
+            return null;
+        }
+
+        if (positionals.size() == 1) {
+            return ScanCategory.fromToken(positionals.getFirst()).orElse(null);
+        }
+
+        return ScanCategory.fromToken(positionals.get(1)).orElse(null);
     }
 
     private List<String> extractPositionalArgs(String[] sourceArgs) {

@@ -44,7 +44,9 @@ public class MutationAiStudioApplication {
 		return "scan".equals(command)
 				|| "select".equals(command)
 				|| "s".equals(command)
-				|| "status".equals(command);
+				|| "status".equals(command)
+				|| "create".equals(command)
+				|| "c".equals(command);
 	}
 
 }

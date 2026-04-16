@@ -160,7 +160,7 @@ Se não existir seleção, mostra mensagem amigável para executar `select`.
 
 ## 4) `create test` e alias `c t`
 
-Lê a seleção atual, gera um prompt por classe para criação automática de testes, mostra um resumo operacional e salva cada prompt em arquivo.
+Lê a seleção atual e gera prompts de teste prontos para uso posterior com modelo local, um por classe selecionada.
 
 ```bash
 mutation-ai create test
@@ -169,27 +169,72 @@ mutation-ai create test .
 mutation-ai create test /caminho/projeto-alvo
 ```
 
-Saída:
+Saída do comando:
 - caminho do projeto
 - total de classes selecionadas
 - total de prompts gerados
-- para cada classe: arquivo fonte, dependências identificadas, preview do prompt e caminho do arquivo salvo
+- caminho da pasta do lote salvo
+- nomes das classes para as quais o prompt foi gerado
 
-Características do prompt:
-- um prompt por classe selecionada
-- inclui fully qualified name e caminho relativo do arquivo
-- inclui o código fonte completo da classe alvo
-- inclui dependências identificadas, priorizando construtor
-- exige saída estrita com apenas código Java
-- prepara geração compatível com `src/test/java`
+Exemplo de saída:
+
+```text
+Projeto: /caminho/projeto
+Classes selecionadas: 3
+Prompts gerados: 3
+Lote salvo em: /caminho/projeto/.mutation-ai/prompts/create-test-20260415-235655
+Classes geradas:
+ - com.exemplo.service.UserService
+ - com.exemplo.service.AuthService
+ - com.exemplo.service.BillingService
+```
+
+### O que cada prompt contém
+
+Cada classe selecionada gera um arquivo próprio com:
+- fully qualified name da classe alvo
+- caminho relativo do arquivo fonte
+- dependências colaboradoras identificadas, priorizando construtor
+- código fonte completo da classe alvo com limpeza de ruídos simples
+- instruções estritas para geração de um único arquivo `*Test.java`
+
+### Regras do prompt gerado
+
+O template foi preparado para automação com IA local e pede explicitamente:
+- retorno com apenas código Java
+- sem markdown
+- sem blocos como ` ```java ` ou ` ``` `
+- sem explicações fora do código
+- sem comentários explicando o código gerado
+- uso de JUnit 5 e Mockito
+- uso de `@Mock`, `@InjectMocks` e preferencialmente `@ExtendWith(MockitoExtension.class)` quando fizer sentido
+- classe de teste no formato `NomeDaClasseTest`
+- package compatível com a classe alvo
+- foco em comportamento observável
+- cobertura de caminho feliz, falhas relevantes, bordas, `null`, `Optional.empty()` e exceções quando aplicável
+- nomes de testes descritivos e legíveis
+
+### Organização dos arquivos gerados
+
+Cada execução cria uma pasta própria para evitar mistura entre lotes diferentes.
+
+Exemplo:
+
+```text
+.mutation-ai/prompts/
+  create-test-20260415-235655/
+    UserService.md
+    AuthService.md
+    BillingService.md
+```
 
 Se não existir seleção, o comando orienta executar `mutation-ai select .` antes.
 
 ---
 
-## Persistência da seleção
+## Persistência
 
-Arquivo salvo no projeto alvo:
+Arquivos salvos no projeto alvo:
 
 ```text
 <projectRoot>/.mutation-ai/selection.json

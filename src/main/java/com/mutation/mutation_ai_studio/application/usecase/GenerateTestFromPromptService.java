@@ -34,13 +34,18 @@ public class GenerateTestFromPromptService implements GenerateTestFromPromptUseC
     public GeneratedTestBatch generate(Path projectRoot, TestPromptBatch promptBatch) {
         Instant createdAt = promptBatch.createdAt();
         List<GeneratedTestResult> results = promptBatch.prompts().stream()
-                .map(prompt -> generateForPrompt(projectRoot, prompt, createdAt))
+                .map(prompt -> generateSingle(projectRoot, prompt, createdAt, null, null))
                 .toList();
 
         return new GeneratedTestBatch(projectRoot.toString(), createdAt, results);
     }
 
-    private GeneratedTestResult generateForPrompt(Path projectRoot, ClassTestPrompt prompt, Instant createdAt) {
+    @Override
+    public GeneratedTestResult generateSingle(Path projectRoot,
+                                              ClassTestPrompt prompt,
+                                              Instant createdAt,
+                                              String storageSubdirectory,
+                                              String fileSuffix) {
         String rawResponse = aiTestGeneratorPort.generate(prompt.prompt());
         String sanitizedCode = sanitize(rawResponse);
         String generatedTestClassName = prompt.className() + "Test";
@@ -54,7 +59,7 @@ public class GenerateTestFromPromptService implements GenerateTestFromPromptUseC
                 null
         );
 
-        Path savedPath = generatedTestRepositoryPort.save(projectRoot, result, createdAt);
+        Path savedPath = generatedTestRepositoryPort.save(projectRoot, result, createdAt, storageSubdirectory, fileSuffix);
         return new GeneratedTestResult(
                 result.className(),
                 result.fullyQualifiedName(),

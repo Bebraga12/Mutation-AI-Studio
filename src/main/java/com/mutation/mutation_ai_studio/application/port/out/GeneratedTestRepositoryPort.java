@@ -8,4 +8,10 @@ import java.time.Instant;
 public interface GeneratedTestRepositoryPort {
 
     Path save(Path projectRoot, GeneratedTestResult result, Instant createdAt);
+
+    Path save(Path projectRoot,
+              GeneratedTestResult result,
+              Instant createdAt,
+              String storageSubdirectory,
+              String fileSuffix);
 }

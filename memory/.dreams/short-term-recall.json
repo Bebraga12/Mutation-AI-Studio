@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "updatedAt": "2026-04-22T00:51:18.675Z",
+  "entries": {
+    "memory:memory/2026-04-21.md:1:3": {
+      "key": "memory:memory/2026-04-21.md:1:3",
+      "path": "memory/2026-04-21.md",
+      "startLine": 1,
+      "endLine": 3,
+      "source": "memory",
+      "snippet": "- 2026-04-21: No projeto Mutation AI Studio, o fluxo de `mutation-ai create test` foi consolidado como: gerar prompts por classe selecionada, salvar em `.mutation-ai/prompts/create-test-<timestamp>/`, gerar respostas do Ollama e salvar em `.mutation-ai/generated/...`, sanitizar e validar, salvar apenas aprovados em `.mutation-ai/approved/...`; promoção para `src/test/java` ficou adiada para um comando futuro separado. - 2026-04-21: A validação foi confirmada como parte real do pipeline antes da aprovação. `CreateTestCliAdapter` chama `create -> generate -> validate`, e arquivos ruins podem existir em `generated`, mas só devem chegar a `approved` se passarem na validação. - 2026-04-21: A UX d",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "totalScore": 0.35155500782805216,
+      "maxScore": 0.35155327312336443,
+      "firstRecalledAt": "2026-04-22T00:23:42.051Z",
+      "lastRecalledAt": "2026-04-22T00:51:18.675Z",
+      "queryHashes": [
+        "05b33724c169",
+        "c7f07e9f8ec0"
+      ],
+      "recallDays": [
+        "2026-04-21"
+      ],
+      "conceptTags": [
+        "mutation-ai",
+        "mutation-ai/prompts/create-test",
+        "mutation-ai/generated",
+        "mutation-ai/approved",
+        "src/test/java",
+        "projeto",
+        "mutation",
+        "studio"
+      ]
+    },
+    "memory:memory/2026-04-21.md:2:4": {
+      "key": "memory:memory/2026-04-21.md:2:4",
+      "path": "memory/2026-04-21.md",
+      "startLine": 2,
+      "endLine": 4,
+      "source": "memory",
+      "snippet": "- 2026-04-21: A validação foi confirmada como parte real do pipeline antes da aprovação. `CreateTestCliAdapter` chama `create -> generate -> validate`, e arquivos ruins podem existir em `generated`, mas só devem chegar a `approved` se passarem na validação. - 2026-04-21: A UX de aprovados foi ajustada para sempre garantir a criação da pasta `.mutation-ai/approved/create-test-<timestamp>/`, mesmo quando o lote tem zero aprovados, mantendo a pasta vazia e exibindo no console a mensagem: `Nenhum teste foi aprovado neste lote; nada foi salvo em approved`. - 2026-04-21: O template de prompt em `CreateTestPromptService` foi generalizado para qualquer projeto Java, removendo referências específicas",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "totalScore": 0.000003122421994138576,
+      "maxScore": 0.000001561210997069288,
+      "firstRecalledAt": "2026-04-22T00:23:42.051Z",
+      "lastRecalledAt": "2026-04-22T00:51:18.675Z",
+      "queryHashes": [
+        "05b33724c169",
+        "c7f07e9f8ec0"
+      ],
+      "recallDays": [
+        "2026-04-21"
+      ],
+      "conceptTags": [
+        "mutation-ai/approved/create-test",
+        "validação",
+        "foi",
+        "confirmada",
+        "parte",
+        "real",
+        "pipeline",
+        "antes"
+      ]
+    }
+  }
+}

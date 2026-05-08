@@ -1,13 +1,19 @@
 package com.mutation.mutation_ai_studio.adapters.in.cli;
 
+import com.mutation.mutation_ai_studio.adapters.out.filesystem.FileApprovedTestRepositoryAdapter;
 import com.mutation.mutation_ai_studio.adapters.out.filesystem.FileTestPromptRepositoryAdapter;
 import com.mutation.mutation_ai_studio.application.port.in.CreateTestPromptUseCase;
 import com.mutation.mutation_ai_studio.application.port.in.GenerateTestFromPromptUseCase;
+import com.mutation.mutation_ai_studio.application.port.in.RefineGeneratedTestsUseCase;
 import com.mutation.mutation_ai_studio.application.port.in.ValidateGeneratedTestsUseCase;
 import com.mutation.mutation_ai_studio.domain.model.ClassTestPrompt;
 import com.mutation.mutation_ai_studio.domain.model.GeneratedTestBatch;
+import com.mutation.mutation_ai_studio.domain.model.RefinementAttempt;
+import com.mutation.mutation_ai_studio.domain.model.RefinementBatch;
+import com.mutation.mutation_ai_studio.domain.model.RefinementResult;
 import com.mutation.mutation_ai_studio.domain.model.TestPromptBatch;
 import com.mutation.mutation_ai_studio.domain.model.ValidatedTestBatch;
+import com.mutation.mutation_ai_studio.domain.model.ValidatedTestResult;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -29,16 +35,22 @@ public class CreateTestCliAdapter implements ApplicationRunner {
     private final CreateTestPromptUseCase createTestPromptUseCase;
     private final GenerateTestFromPromptUseCase generateTestFromPromptUseCase;
     private final ValidateGeneratedTestsUseCase validateGeneratedTestsUseCase;
+    private final RefineGeneratedTestsUseCase refineGeneratedTestsUseCase;
     private final FileTestPromptRepositoryAdapter testPromptRepository;
+    private final FileApprovedTestRepositoryAdapter approvedTestRepository;
 
     public CreateTestCliAdapter(CreateTestPromptUseCase createTestPromptUseCase,
                                 GenerateTestFromPromptUseCase generateTestFromPromptUseCase,
                                 ValidateGeneratedTestsUseCase validateGeneratedTestsUseCase,
-                                FileTestPromptRepositoryAdapter testPromptRepository) {
+                                RefineGeneratedTestsUseCase refineGeneratedTestsUseCase,
+                                FileTestPromptRepositoryAdapter testPromptRepository,
+                                FileApprovedTestRepositoryAdapter approvedTestRepository) {
         this.createTestPromptUseCase = createTestPromptUseCase;
         this.generateTestFromPromptUseCase = generateTestFromPromptUseCase;
         this.validateGeneratedTestsUseCase = validateGeneratedTestsUseCase;
+        this.refineGeneratedTestsUseCase = refineGeneratedTestsUseCase;
         this.testPromptRepository = testPromptRepository;
+        this.approvedTestRepository = approvedTestRepository;
     }
 
     @Override
@@ -53,8 +65,9 @@ public class CreateTestCliAdapter implements ApplicationRunner {
         List<ClassTestPrompt> savedPrompts = savePrompts(projectRoot, batch);
         GeneratedTestBatch generatedBatch = generateTestFromPromptUseCase.generate(projectRoot, batch);
         ValidatedTestBatch validatedBatch = validateGeneratedTestsUseCase.validate(projectRoot, batch, generatedBatch);
+        RefinementBatch refinementBatch = refineGeneratedTestsUseCase.refine(projectRoot, batch, validatedBatch);
 
-        printSummary(projectRoot, batch, savedPrompts, generatedBatch, validatedBatch);
+        printSummary(projectRoot, batch, savedPrompts, generatedBatch, refinementBatch);
     }
 
     private boolean isCreateTestCommand(String[] sourceArgs) {
@@ -125,13 +138,13 @@ public class CreateTestCliAdapter implements ApplicationRunner {
                               TestPromptBatch batch,
                               List<ClassTestPrompt> savedPrompts,
                               GeneratedTestBatch generatedBatch,
-                              ValidatedTestBatch validatedBatch) {
+                              RefinementBatch refinementBatch) {
         System.out.printf("Projeto: %s%n", projectRoot);
         System.out.printf("Classes selecionadas: %d%n", batch.totalSelected());
         System.out.printf("Prompts gerados: %d%n", savedPrompts.size());
         System.out.printf("Respostas geradas: %d%n", generatedBatch.results().size());
-        long approvedCount = validatedBatch.results().stream().filter(result -> result.approved()).count();
-        long rejectedCount = validatedBatch.results().size() - approvedCount;
+        long approvedCount = refinementBatch.results().stream().map(RefinementResult::finalResult).filter(ValidatedTestResult::approved).count();
+        long rejectedCount = refinementBatch.results().size() - approvedCount;
         System.out.printf("Aprovados: %d%n", approvedCount);
         System.out.printf("Rejeitados: %d%n", rejectedCount);
 
@@ -143,24 +156,45 @@ public class CreateTestCliAdapter implements ApplicationRunner {
                 ? projectRoot.resolve(".mutation-ai/generated")
                 : generatedBatch.results().getFirst().savedPath().getParent();
 
-        Path approvedBatchDirectory = validatedBatch.results().stream()
-                .filter(result -> result.approved() && result.approvedPath() != null)
-                .map(result -> result.approvedPath().getParent())
-                .findFirst()
-                .orElse(projectRoot.resolve(".mutation-ai/approved"));
+        Path approvedBatchDirectory = approvedTestRepository.ensureBatchDirectory(projectRoot, refinementBatch.createdAt());
 
         System.out.printf("Lote de prompts: %s%n", promptBatchDirectory);
         System.out.printf("Lote de respostas: %s%n", generatedBatchDirectory);
         System.out.printf("Lote de aprovados: %s%n", approvedBatchDirectory);
 
-        System.out.println("Aprovados:");
-        validatedBatch.results().stream()
-                .filter(result -> result.approved())
-                .forEach(result -> System.out.printf(" - %s -> %s%n", result.fullyQualifiedName(), result.approvedPath()));
+        if (approvedCount == 0) {
+            System.out.println("Nenhum teste foi aprovado neste lote; nada foi salvo em approved");
+        } else {
+            System.out.println("Aprovados:");
+            refinementBatch.results().stream()
+                    .map(RefinementResult::finalResult)
+                    .filter(ValidatedTestResult::approved)
+                    .forEach(result -> System.out.printf(" - %s -> %s%n", result.fullyQualifiedName(), result.approvedPath()));
+        }
 
-        System.out.println("Rejeitados:");
-        validatedBatch.results().stream()
-                .filter(result -> !result.approved())
-                .forEach(result -> System.out.printf(" - %s -> %s%n", result.fullyQualifiedName(), String.join("; ", result.reasons())));
+        System.out.println("Evolução por classe:");
+        refinementBatch.results().forEach(this::printRefinementResult);
+    }
+
+    private void printRefinementResult(RefinementResult result) {
+        ValidatedTestResult finalResult = result.finalResult();
+        String status = finalResult.approved() ? "APROVADO" : "REJEITADO";
+        System.out.printf(" - %s: %s após %d tentativa(s)%n", finalResult.fullyQualifiedName(), status, result.attemptsUsed());
+
+        for (RefinementAttempt attempt : result.attempts()) {
+            System.out.printf("   tentativa %d, motivos: %s%n", attempt.attemptNumber(), String.join("; ", attempt.rejectionReasons()));
+            System.out.printf("   gerado: %s%n", attempt.generatedPath());
+            if (attempt.approved()) {
+                System.out.printf("   aprovado em: %s%n", attempt.approvedPath());
+            } else {
+                System.out.printf("   ainda rejeitado: %s%n", String.join("; ", attempt.finalReasons()));
+            }
+        }
+
+        if (!finalResult.approved() && result.attempts().isEmpty()) {
+            System.out.printf("   rejeitado sem refinamento: %s%n", String.join("; ", finalResult.reasons()));
+        } else if (!finalResult.approved()) {
+            System.out.printf("   rejeição final: %s%n", String.join("; ", finalResult.reasons()));
+        }
     }
 }

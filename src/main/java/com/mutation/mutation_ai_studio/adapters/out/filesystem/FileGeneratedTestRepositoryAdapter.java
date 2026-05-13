@@ -21,10 +21,23 @@ public class FileGeneratedTestRepositoryAdapter implements GeneratedTestReposito
 
     @Override
     public Path save(Path projectRoot, GeneratedTestResult result, Instant createdAt) {
+        return save(projectRoot, result, createdAt, null, null);
+    }
+
+    @Override
+    public Path save(Path projectRoot,
+                     GeneratedTestResult result,
+                     Instant createdAt,
+                     String storageSubdirectory,
+                     String fileSuffix) {
         Path generatedDirectory = projectRoot.resolve(MUTATION_DIR).resolve(GENERATED_DIR).normalize();
         String batchFolderName = "create-test-" + FILE_NAME_FORMATTER.format(createdAt);
         Path batchDirectory = generatedDirectory.resolve(batchFolderName);
-        Path generatedFile = batchDirectory.resolve(result.generatedTestClassName() + ".java");
+        if (storageSubdirectory != null && !storageSubdirectory.isBlank()) {
+            batchDirectory = batchDirectory.resolve(storageSubdirectory);
+        }
+        String suffix = (fileSuffix == null || fileSuffix.isBlank()) ? "" : "-" + fileSuffix;
+        Path generatedFile = batchDirectory.resolve(result.generatedTestClassName() + suffix + ".java");
 
         try {
             Files.createDirectories(batchDirectory);

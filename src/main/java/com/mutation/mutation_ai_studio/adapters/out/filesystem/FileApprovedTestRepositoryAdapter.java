@@ -21,17 +21,27 @@ public class FileApprovedTestRepositoryAdapter implements ApprovedTestRepository
 
     @Override
     public Path save(Path projectRoot, ValidatedTestResult result, Instant createdAt) {
-        Path approvedDirectory = projectRoot.resolve(MUTATION_DIR).resolve(APPROVED_DIR).normalize();
-        String batchFolderName = "create-test-" + FILE_NAME_FORMATTER.format(createdAt);
-        Path batchDirectory = approvedDirectory.resolve(batchFolderName);
+        Path batchDirectory = ensureBatchDirectory(projectRoot, createdAt);
         Path approvedFile = batchDirectory.resolve(result.generatedTestClassName() + ".java");
 
         try {
-            Files.createDirectories(batchDirectory);
             Files.writeString(approvedFile, result.sanitizedCode());
             return approvedFile;
         } catch (IOException e) {
             throw new IllegalStateException("Erro ao salvar teste aprovado em: " + approvedFile, e);
+        }
+    }
+
+    public Path ensureBatchDirectory(Path projectRoot, Instant createdAt) {
+        Path approvedDirectory = projectRoot.resolve(MUTATION_DIR).resolve(APPROVED_DIR).normalize();
+        String batchFolderName = "create-test-" + FILE_NAME_FORMATTER.format(createdAt);
+        Path batchDirectory = approvedDirectory.resolve(batchFolderName);
+
+        try {
+            Files.createDirectories(batchDirectory);
+            return batchDirectory;
+        } catch (IOException e) {
+            throw new IllegalStateException("Erro ao preparar diretório de aprovados em: " + batchDirectory, e);
         }
     }
 }

@@ -1,8 +1,12 @@
 package com.mutation.mutation_ai_studio.adapters.in.cli;
 
-import com.mutation.mutation_ai_studio.adapters.out.filesystem.FileTestPromptRepositoryAdapter;
 import com.mutation.mutation_ai_studio.application.port.in.CreateTestPromptUseCase;
+import com.mutation.mutation_ai_studio.application.port.in.ExecuteGeneratedTestBatchUseCase;
+import com.mutation.mutation_ai_studio.application.port.in.GenerateTestFromPromptUseCase;
+import com.mutation.mutation_ai_studio.application.port.out.TestPromptRepositoryPort;
 import com.mutation.mutation_ai_studio.domain.model.ClassTestPrompt;
+import com.mutation.mutation_ai_studio.domain.model.GeneratedTestBatch;
+import com.mutation.mutation_ai_studio.domain.model.GeneratedTestExecutionResult;
 import com.mutation.mutation_ai_studio.domain.model.TestPromptBatch;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -23,11 +27,17 @@ public class CreateTestCliAdapter implements ApplicationRunner {
     private static final String TEST_ALIAS = "t";
 
     private final CreateTestPromptUseCase createTestPromptUseCase;
-    private final FileTestPromptRepositoryAdapter testPromptRepository;
+    private final GenerateTestFromPromptUseCase generateTestFromPromptUseCase;
+    private final ExecuteGeneratedTestBatchUseCase executeGeneratedTestBatchUseCase;
+    private final TestPromptRepositoryPort testPromptRepository;
 
     public CreateTestCliAdapter(CreateTestPromptUseCase createTestPromptUseCase,
-                                FileTestPromptRepositoryAdapter testPromptRepository) {
+                                GenerateTestFromPromptUseCase generateTestFromPromptUseCase,
+                                ExecuteGeneratedTestBatchUseCase executeGeneratedTestBatchUseCase,
+                                TestPromptRepositoryPort testPromptRepository) {
         this.createTestPromptUseCase = createTestPromptUseCase;
+        this.generateTestFromPromptUseCase = generateTestFromPromptUseCase;
+        this.executeGeneratedTestBatchUseCase = executeGeneratedTestBatchUseCase;
         this.testPromptRepository = testPromptRepository;
     }
 
@@ -41,8 +51,11 @@ public class CreateTestCliAdapter implements ApplicationRunner {
         Path projectRoot = resolveProjectRoot(sourceArgs);
         TestPromptBatch batch = createTestPromptUseCase.create(projectRoot);
         List<ClassTestPrompt> savedPrompts = savePrompts(projectRoot, batch);
+        TestPromptBatch savedBatch = new TestPromptBatch(batch.projectRoot(), batch.createdAt(), batch.totalSelected(), savedPrompts);
+        GeneratedTestBatch generatedBatch = generateTestFromPromptUseCase.generate(projectRoot, savedBatch);
+        List<GeneratedTestExecutionResult> executionResults = executeGeneratedTestBatchUseCase.execute(projectRoot, generatedBatch);
 
-        printSummary(projectRoot, batch, savedPrompts);
+        printSummary(projectRoot, savedBatch, savedPrompts, generatedBatch, executionResults);
     }
 
     private boolean isCreateTestCommand(String[] sourceArgs) {
@@ -101,6 +114,7 @@ public class CreateTestCliAdapter implements ApplicationRunner {
                     prompt.fullyQualifiedName(),
                     prompt.relativePath(),
                     prompt.dependencies(),
+                    prompt.analysis(),
                     prompt.sourceCode(),
                     prompt.prompt(),
                     savedPath
@@ -109,17 +123,40 @@ public class CreateTestCliAdapter implements ApplicationRunner {
         return savedPrompts;
     }
 
-    private void printSummary(Path projectRoot, TestPromptBatch batch, List<ClassTestPrompt> savedPrompts) {
+    private void printSummary(Path projectRoot,
+                              TestPromptBatch batch,
+                              List<ClassTestPrompt> savedPrompts,
+                              GeneratedTestBatch generatedBatch,
+                              List<GeneratedTestExecutionResult> executionResults) {
         System.out.printf("Projeto: %s%n", projectRoot);
         System.out.printf("Classes selecionadas: %d%n", batch.totalSelected());
         System.out.printf("Prompts gerados: %d%n", savedPrompts.size());
+        System.out.printf("Testes candidatos gerados: %d%n", generatedBatch.candidates().size());
+
+        long approved = executionResults.stream().filter(result -> result.feedback().passed()).count();
+        long rejected = executionResults.size() - approved;
+        System.out.printf("Execuções aprovadas no Maven: %d%n", approved);
+        System.out.printf("Execuções com falha no Maven: %d%n", rejected);
 
         Path batchDirectory = savedPrompts.isEmpty()
                 ? projectRoot.resolve(".mutation-ai/prompts")
                 : savedPrompts.getFirst().savedPath().getParent();
 
         System.out.printf("Lote salvo em: %s%n", batchDirectory);
-        System.out.println("Classes geradas:");
-        savedPrompts.forEach(prompt -> System.out.printf(" - %s%n", prompt.fullyQualifiedName()));
+        System.out.println("Resultados por classe:");
+        executionResults.forEach(this::printExecutionResult);
+    }
+
+    private void printExecutionResult(GeneratedTestExecutionResult result) {
+        String status = result.feedback().passed() ? "APROVADO" : "FALHOU";
+        System.out.printf(" - %s: %s%n", result.candidate().fullyQualifiedName(), status);
+        if (!result.feedback().passed()) {
+            result.feedback().errors().stream()
+                    .limit(5)
+                    .forEach(error -> System.out.printf("   erro: %s%n", error));
+            if (result.preservedPath() != null) {
+                System.out.printf("   teste falho salvo em: %s%n", result.preservedPath());
+            }
+        }
     }
 }

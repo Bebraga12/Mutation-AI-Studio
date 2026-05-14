@@ -2,7 +2,7 @@
 
 Plataforma local para geração automatizada de testes unitários em projetos Java, com foco em qualidade (cobertura e mutation testing) e arquitetura hexagonal.
 
-> Status atual (CLI): `scan`, `select` (alias `s`) e `status`.
+> Status atual (CLI): `scan`, `select` (alias `s`), `status` e a base do fluxo `create test`.
 
 ---
 
@@ -160,7 +160,7 @@ Se não existir seleção, mostra mensagem amigável para executar `select`.
 
 ## 4) `create test` e alias `c t`
 
-Lê a seleção atual e gera prompts de teste prontos para uso posterior com modelo local, um por classe selecionada.
+Lê a seleção atual, analisa a classe alvo, gera um teste candidato por classe selecionada e prepara o fluxo de validação real via Maven.
 
 ```bash
 mutation-ai create test
@@ -173,8 +173,10 @@ Saída do comando:
 - caminho do projeto
 - total de classes selecionadas
 - total de prompts gerados
-- caminho da pasta do lote salvo
-- nomes das classes para as quais o prompt foi gerado
+- total de respostas geradas
+- total de aprovados e rejeitados
+- caminhos dos lotes gerados
+- nomes das classes e sua evolução por tentativa
 
 Exemplo de saída:
 
@@ -189,14 +191,16 @@ Classes geradas:
  - com.exemplo.service.BillingService
 ```
 
-### O que cada prompt contém
+### O que cada prompt e execução devem considerar
 
-Cada classe selecionada gera um arquivo próprio com:
+Cada classe selecionada deve gerar um fluxo próprio com:
 - fully qualified name da classe alvo
 - caminho relativo do arquivo fonte
 - dependências colaboradoras identificadas, priorizando construtor
 - código fonte completo da classe alvo com limpeza de ruídos simples
+- análise estrutural da classe para reduzir alucinação
 - instruções estritas para geração de um único arquivo `*Test.java`
+- espaço para refinamento orientado por erro real de compilação e execução
 
 ### Regras do prompt gerado
 
@@ -213,6 +217,17 @@ O template foi preparado para automação com IA local e pede explicitamente:
 - foco em comportamento observável
 - cobertura de caminho feliz, falhas relevantes, bordas, `null`, `Optional.empty()` e exceções quando aplicável
 - nomes de testes descritivos e legíveis
+
+### Validação real e aprovação
+
+A direção arquitetural do projeto é:
+- gerar um teste candidato
+- salvar temporariamente o teste no projeto alvo
+- executar `./mvnw -Dtest=<NomeDoTeste> test`
+- capturar feedback real do Maven/JUnit
+- refinar o teste quando houver falha
+- considerar aprovado apenas o teste que passar no projeto real
+- medir cobertura e mutation score após a aprovação funcional
 
 ### Organização dos arquivos gerados
 

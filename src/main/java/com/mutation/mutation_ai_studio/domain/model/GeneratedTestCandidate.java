@@ -1,16 +1,13 @@
 package com.mutation.mutation_ai_studio.domain.model;
 
 import java.nio.file.Path;
-import java.util.List;
 
-public record ClassTestPrompt(
+public record GeneratedTestCandidate(
+        ClassTestPrompt prompt,
         String className,
         String fullyQualifiedName,
-        String relativePath,
-        List<String> dependencies,
-        ClassAnalysis analysis,
+        String testClassName,
         String sourceCode,
-        String prompt,
         Path savedPath
 ) {
 }

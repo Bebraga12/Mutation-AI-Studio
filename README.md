@@ -45,7 +45,7 @@ bash scripts/install.sh
 O instalador faz o seguinte:
 
 - compila o projeto e instala o launcher `mutation-ai`
-- pede para executar `mutation-ai scan .` antes de continuar
+- executa `mutation-ai scan .` na raiz do projeto antes de continuar
 - instala o Ollama pela distribuicao oficial, se necessario
 - pergunta qual modelo usar
 - faz o download do modelo escolhido

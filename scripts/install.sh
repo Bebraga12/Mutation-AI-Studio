@@ -165,18 +165,10 @@ EOF
   fi
 }
 
-prompt_initial_scan() {
-  if [ ! -t 0 ]; then
-    return 0
-  fi
-
-  log "Primeiro passo: rode o scan do projeto atual antes de continuar."
-  log "Comando:"
-  log "  mutation-ai scan ."
-  log "Se o PATH ainda nao estiver atualizado, use:"
-  log "  $LAUNCHER_TARGET scan ."
-  printf 'Depois de executar o scan, pressione Enter para continuar... '
-  read -r _
+run_initial_scan() {
+  log "Executando scan inicial do projeto."
+  log "Comando: $LAUNCHER_TARGET scan ."
+  (cd "$REPO_ROOT" && "$LAUNCHER_TARGET" scan .)
 }
 
 write_config() {
@@ -197,7 +189,7 @@ main() {
   jar="$(locate_jar)"
 
   install_launcher "$jar"
-  prompt_initial_scan
+  run_initial_scan
 
   install_ollama_if_needed
   start_ollama_server_if_needed

@@ -33,13 +33,9 @@ final class GeneratedTestSourceNormalizer {
     }
 
     static String normalize(String generatedCode, ClassTestPrompt prompt) {
-        if (isKnownTargetClass(prompt.className())) {
-            return GeneratedTestFallbackFactory.generate(prompt);
-        }
-
         String sanitized = GeneratedTestSanitizer.sanitize(generatedCode);
         if (sanitized.isBlank()) {
-            return sanitized;
+            return GeneratedTestFallbackFactory.generate(prompt);
         }
 
         sanitized = sanitized.replace("import org.mockito.MockitoExtension;", "import org.mockito.junit.jupiter.MockitoExtension;");
@@ -53,14 +49,8 @@ final class GeneratedTestSourceNormalizer {
             ensureCommonImports(compilationUnit);
             return compilationUnit.toString();
         } catch (RuntimeException ex) {
-            return normalizeAsText(sanitized, prompt);
+            return GeneratedTestFallbackFactory.generate(prompt);
         }
-    }
-
-    private static boolean isKnownTargetClass(String className) {
-        return "LoginService".equals(className)
-                || "AutorService".equals(className)
-                || "LivroService".equals(className);
     }
 
     private static void normalizeTypeName(CompilationUnit compilationUnit, String expectedTestClassName) {
@@ -106,35 +96,4 @@ final class GeneratedTestSourceNormalizer {
         }
     }
 
-    private static String normalizeAsText(String sanitized, ClassTestPrompt prompt) {
-        String normalized = sanitized;
-        if (!normalized.contains("package ")) {
-            normalized = "package " + prompt.analysis().packageName() + ";\n\n" + normalized;
-        }
-
-        normalized = normalized.replace("import org.mockito.MockitoExtension;", "import org.mockito.junit.jupiter.MockitoExtension;");
-        normalized = normalized.replace("org.mockito.MockitoExtension", "org.mockito.junit.jupiter.MockitoExtension");
-
-        StringBuilder builder = new StringBuilder();
-        builder.append("package ").append(prompt.analysis().packageName()).append(";\n\n");
-        for (String qualifiedName : COMMON_IMPORTS) {
-            builder.append("import ").append(qualifiedName).append(";\n");
-        }
-        for (String qualifiedName : COMMON_STATIC_IMPORTS) {
-            builder.append("import static ").append(qualifiedName).append(";\n");
-        }
-        builder.append('\n');
-
-        String body = normalized;
-        int packageIndex = body.indexOf("package ");
-        if (packageIndex >= 0) {
-            int firstLineEnd = body.indexOf('\n', packageIndex);
-            if (firstLineEnd >= 0) {
-                body = body.substring(firstLineEnd + 1).trim();
-            }
-        }
-
-        builder.append(body.trim());
-        return builder.toString();
-    }
 }

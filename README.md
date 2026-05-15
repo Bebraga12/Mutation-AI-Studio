@@ -34,26 +34,55 @@ Tudo com execução local, sem dependência de cloud.
 ./mvnw clean install
 ```
 
-## Usar a CLI (sem instalar global)
+## Instalacao
 
-Depois do build, use o wrapper do projeto:
+O projeto inclui um instalador interativo para preparar a CLI em uma maquina nova.
 
 ```bash
-./mutation-ai scan .
-./mutation-ai select .
-./mutation-ai status .
+bash scripts/install.sh
 ```
 
-### Colocar no PATH (opcional)
+O instalador faz o seguinte:
 
-No terminal atual:
+- instala o Ollama pela distribuicao oficial, se necessario
+- pergunta qual modelo usar
+- faz o download do modelo escolhido
+- compila o projeto
+- instala o launcher `mutation-ai` em `~/.local/bin`
+- grava a configuracao em `~/.config/mutation-ai/config.env`
+
+Se preferir, o instalador tambem pode criar um link em `/usr/local/bin` usando `sudo`.
+
+## Usar a CLI
+
+Depois da instalacao, use o comando de qualquer diretorio:
+
+```bash
+mutation-ai scan .
+mutation-ai select .
+mutation-ai status .
+```
+
+### Ajuste manual do PATH
+
+Se quiser carregar o ambiente manualmente no terminal atual:
 
 ```bash
 source scripts/env.sh
 mutation-ai scan .
 ```
 
-Para deixar permanente, adicione a linha `source <caminho>/Mutation-AI-Studio/scripts/env.sh` no seu `~/.zshrc` ou `~/.bashrc`.
+Para deixar permanente, adicione `source <caminho>/Mutation-AI-Studio/scripts/env.sh` no seu `~/.zshrc` ou `~/.bashrc`.
+
+### Alterar o modelo da IA
+
+O modelo usado pelo Ollama fica em:
+
+```bash
+~/.config/mutation-ai/config.env
+```
+
+Voce tambem pode reinstalar e escolher outro modelo com `bash scripts/install.sh`.
 
 ---
 

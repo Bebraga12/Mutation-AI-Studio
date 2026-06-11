@@ -1,0 +1,14 @@
+package com.mutation.mutation_ai_studio.application.port.in;
+
+import com.mutation.mutation_ai_studio.domain.model.SelectionSnapshot;
+
+import java.nio.file.Path;
+
+public interface SelectTargetsUseCase {
+
+    SelectionSnapshot selectAll(Path projectRoot);
+
+    SelectionSnapshot selectByCategory(Path projectRoot, String category);
+
+    SelectionSnapshot selectSingle(Path projectRoot, String classNameOrFqcn);
+}

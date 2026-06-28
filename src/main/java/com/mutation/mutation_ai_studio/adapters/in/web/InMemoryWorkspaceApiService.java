@@ -639,9 +639,24 @@ public class InMemoryWorkspaceApiService {
             int beforeScore = hasPreviousMetrics ? previousScore : nextScore;
             int beforeCoverage = hasPreviousMetrics ? previousCoverageRate : currentCoverageRate;
             int beforeSurvivorOfCovered = hasPreviousMetrics ? previousSurvivorOfCoveredRate : currentSurvivorOfCoveredRate;
+
+            // Contagens absolutas da rodada ANTERIOR. O summary cache ainda guarda o resultado da
+            // rodada passada neste ponto (o novo so e salvo no fim de updateWorkspaceAfterRun), entao
+            // da pra preencher "Mutantes eliminados/sobreviventes/Sem cobertura" do lado "Antes" em vez
+            // de mostrar n/d. Sem rodada anterior, usa as contagens atuais (antes == depois, sem diff falso).
+            Path previousSummaryRoot = Paths.get(normalize(currentProject.repositoryPath()))
+                    .toAbsolutePath().normalize();
+            Optional<PitestSummaryCache> previousSummary = hasPreviousMetrics
+                    ? pitestSummaryCacheRepository.load(previousSummaryRoot)
+                    : Optional.empty();
+            int beforeKilled = previousSummary.map(PitestSummaryCache::killedMutants).orElse(metrics.killed());
+            int beforeSurvivors = previousSummary.map(PitestSummaryCache::survivingMutants).orElse(metrics.survivorCount());
+            int beforeNoCoverage = previousSummary.map(PitestSummaryCache::noCoverageMutants).orElse(metrics.noCoverage());
+
             nextDiffSnapshot = buildPitDiffSnapshot(
                     metrics,
                     beforeScore, beforeCoverage, beforeSurvivorOfCovered,
+                    beforeKilled, beforeSurvivors, beforeNoCoverage,
                     currentCoverageRate, currentSurvivorOfCoveredRate);
         } else {
             boolean executionSucceeded = execution.exitCode() == 0 && !execution.timedOut();
@@ -818,15 +833,16 @@ public class InMemoryWorkspaceApiService {
     private ApiDiffSnapshot buildPitDiffSnapshot(
             PitestMetrics metrics,
             int prevScore, int prevCoverage, int prevSurvivorOfCovered,
+            int prevKilled, int prevSurvivors, int prevNoCoverage,
             int currentCoverage, int currentSurvivorOfCovered) {
 
         List<ApiDiffLine> beforeLines = List.of(
                 new ApiDiffLine(1, "Mutation Score:          " + prevScore + "%", "context"),
                 new ApiDiffLine(2, "Cobertura de mutacao:    " + prevCoverage + "%", "context"),
                 new ApiDiffLine(3, "Sobreviventes cobertos:  " + prevSurvivorOfCovered + "%", "context"),
-                new ApiDiffLine(4, "Mutantes eliminados:     " + "n/d", "context"),
-                new ApiDiffLine(5, "Mutantes sobreviventes:  " + "n/d", "context"),
-                new ApiDiffLine(6, "Sem cobertura:           " + "n/d", "context"));
+                new ApiDiffLine(4, "Mutantes eliminados:     " + prevKilled, "context"),
+                new ApiDiffLine(5, "Mutantes sobreviventes:  " + prevSurvivors, "context"),
+                new ApiDiffLine(6, "Sem cobertura:           " + prevNoCoverage, "context"));
 
         List<ApiDiffLine> afterLines = List.of(
                 new ApiDiffLine(1, "Mutation Score:          " + metrics.mutationScore() + "%",
@@ -836,11 +852,11 @@ public class InMemoryWorkspaceApiService {
                 new ApiDiffLine(3, "Sobreviventes cobertos:  " + currentSurvivorOfCovered + "%",
                         kindForLowerIsBetter(prevSurvivorOfCovered, currentSurvivorOfCovered)),
                 new ApiDiffLine(4, "Mutantes eliminados:     " + metrics.killed(),
-                        metrics.killed() > 0 ? "added" : "context"),
+                        kindForHigherIsBetter(prevKilled, metrics.killed())),
                 new ApiDiffLine(5, "Mutantes sobreviventes:  " + metrics.survivorCount(),
-                        metrics.survivorCount() > 0 ? "removed" : "added"),
+                        kindForLowerIsBetter(prevSurvivors, metrics.survivorCount())),
                 new ApiDiffLine(6, "Sem cobertura:           " + metrics.noCoverage(),
-                        metrics.noCoverage() > 0 ? "removed" : "added"));
+                        kindForLowerIsBetter(prevNoCoverage, metrics.noCoverage())));
 
         return new ApiDiffSnapshot(
                 "Antes - rodada anterior",

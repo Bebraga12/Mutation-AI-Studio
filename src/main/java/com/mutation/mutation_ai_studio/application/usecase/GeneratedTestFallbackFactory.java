@@ -17,6 +17,16 @@ final class GeneratedTestFallbackFactory {
     }
 
     static String generate(ClassTestPrompt prompt) {
+        if (prompt.dependencies().isEmpty()) {
+            return generatePlain(prompt);
+        }
+        return generateMockito(prompt);
+    }
+
+    /**
+     * Fallback para classes COM dependências: smoke test com Mockito (@InjectMocks).
+     */
+    private static String generateMockito(ClassTestPrompt prompt) {
         StringBuilder builder = new StringBuilder();
         builder.append("package ").append(prompt.analysis().packageName()).append(";\n\n");
 
@@ -31,9 +41,7 @@ final class GeneratedTestFallbackFactory {
             builder.append("import ").append(importName).append(";\n");
         }
 
-        if (!prompt.dependencies().isEmpty()) {
-            builder.append("import org.mockito.Mock;\n");
-        }
+        builder.append("import org.mockito.Mock;\n");
 
         builder.append("\nimport static org.junit.jupiter.api.Assertions.assertNotNull;\n");
         builder.append("import static org.mockito.Mockito.*;\n\n");
@@ -51,6 +59,50 @@ final class GeneratedTestFallbackFactory {
 
         builder.append("    @Test\n");
         builder.append("    void deveInstanciarSubjeto() {\n");
+        builder.append("        assertNotNull(subject);\n");
+        builder.append("    }\n");
+        builder.append("}\n");
+
+        return builder.toString();
+    }
+
+    /**
+     * Fallback para classes SEM dependências (POJOs/entities/exceptions): instancia o alvo
+     * diretamente, sem Mockito. Para exceptions usa o construtor com mensagem; caso contrário
+     * tenta o construtor sem argumentos.
+     */
+    private static String generatePlain(ClassTestPrompt prompt) {
+        String className = prompt.className();
+        boolean isException = className.endsWith("Exception")
+                || prompt.sourceCode().contains("extends RuntimeException")
+                || prompt.sourceCode().contains("extends Exception");
+        boolean hasNoArgConstructor = prompt.sourceCode().contains("public " + className + "()");
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("package ").append(prompt.analysis().packageName()).append(";\n\n");
+
+        for (String importName : prompt.analysis().importedTypes()) {
+            if (importName == null || importName.isBlank() || isProductionSideImport(importName)) {
+                continue;
+            }
+            builder.append("import ").append(importName).append(";\n");
+        }
+
+        builder.append("import org.junit.jupiter.api.Test;\n");
+        builder.append("\nimport static org.junit.jupiter.api.Assertions.assertNotNull;\n\n");
+
+        builder.append("public class ").append(className).append("Test {\n\n");
+        builder.append("    @Test\n");
+        builder.append("    void deveInstanciarSubjeto() {\n");
+        if (isException) {
+            builder.append("        ").append(className).append(" subject = new ").append(className).append("(\"mensagem de teste\");\n");
+        } else if (hasNoArgConstructor || !prompt.sourceCode().contains("public " + className + "(")) {
+            // Sem construtor explícito (Java fornece o padrão) ou com no-arg explícito.
+            builder.append("        ").append(className).append(" subject = new ").append(className).append("();\n");
+        } else {
+            // Última tentativa: no-arg mesmo assim (melhor esforço para o smoke test).
+            builder.append("        ").append(className).append(" subject = new ").append(className).append("();\n");
+        }
         builder.append("        assertNotNull(subject);\n");
         builder.append("    }\n");
         builder.append("}\n");

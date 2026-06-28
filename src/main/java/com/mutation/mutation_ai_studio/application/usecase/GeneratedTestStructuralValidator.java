@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Component
 public class GeneratedTestStructuralValidator {
@@ -76,31 +75,54 @@ public class GeneratedTestStructuralValidator {
             errors.add("Falha estrutural: o teste gerado nao contem nenhum metodo @Test.");
         }
 
-        List<FieldDeclaration> injectMocksFields = primaryClass.getFields().stream()
-                .filter(field -> field.isAnnotationPresent("InjectMocks"))
-                .toList();
-        if (injectMocksFields.size() != 1) {
-            errors.add("Falha estrutural: deve existir exatamente um campo @InjectMocks para a classe alvo.");
+        boolean hasDependencies = !candidate.prompt().analysis().constructorDependencies().isEmpty()
+                || !candidate.prompt().analysis().fieldDependencies().isEmpty();
+
+        if (hasDependencies) {
+            // Classes com colaboradores injetados precisam do alvo em @InjectMocks (teste com Mockito).
+            List<FieldDeclaration> injectMocksFields = primaryClass.getFields().stream()
+                    .filter(field -> field.isAnnotationPresent("InjectMocks"))
+                    .toList();
+            if (injectMocksFields.size() != 1) {
+                errors.add("Falha estrutural: deve existir exatamente um campo @InjectMocks para a classe alvo.");
+            } else {
+                String injectMocksType = injectMocksFields.getFirst().getElementType().asString();
+                if (!candidate.className().equals(injectMocksType)) {
+                    errors.add("Falha estrutural: o campo @InjectMocks deve usar a classe alvo `" + candidate.className() + "`.");
+                }
+            }
         } else {
-            String injectMocksType = injectMocksFields.getFirst().getElementType().asString();
-            if (!candidate.className().equals(injectMocksType)) {
-                errors.add("Falha estrutural: o campo @InjectMocks deve usar a classe alvo `" + candidate.className() + "`.");
+            // Sem dependências injetadas: o teste deve OU instanciar a classe alvo diretamente
+            // (new ClassName(...)) OU declará-la em @InjectMocks (ambos compilam e funcionam).
+            // Exigir @InjectMocks rígido rejeitava POJOs válidos; exigir só instanciação rejeitava
+            // classes sem-dep que usam @InjectMocks legitimamente.
+            boolean instantiatesTarget = compilationUnit.findAll(com.github.javaparser.ast.expr.ObjectCreationExpr.class).stream()
+                    .anyMatch(creation -> creation.getType().getNameAsString().equals(candidate.className()));
+            boolean injectsTarget = primaryClass.getFields().stream()
+                    .filter(field -> field.isAnnotationPresent("InjectMocks"))
+                    .anyMatch(field -> candidate.className().equals(field.getElementType().asString()));
+            if (!instantiatesTarget && !injectsTarget) {
+                errors.add("Falha estrutural: a classe alvo `" + candidate.className()
+                        + "` deve ser instanciada diretamente (new " + candidate.className()
+                        + "(...)) ou declarada em @InjectMocks.");
             }
         }
 
-        Set<String> publicMethodNames = candidate.prompt().analysis().publicMethods().stream()
-                .map(method -> method.methodName())
-                .collect(Collectors.toSet());
+        // Só barramos chamadas a métodos DECLARADOS como private na classe alvo — esses são
+        // erro de compilação real. Métodos herdados públicos (getMessage, toString, equals…)
+        // não aparecem em publicMethods mas são perfeitamente chamáveis; barrá-los gerava
+        // falsos negativos (ex.: subject.getMessage() numa exception).
+        Set<String> privateMethodNames = Set.copyOf(candidate.prompt().analysis().nonPublicMethodNames());
         List<String> forbiddenSubjectCalls = compilationUnit.findAll(MethodCallExpr.class).stream()
                 .filter(call -> call.getScope().isPresent())
                 .filter(call -> call.getScope().get() instanceof NameExpr)
                 .filter(call -> ((NameExpr) call.getScope().get()).getNameAsString().equals("subject"))
                 .map(MethodCallExpr::getNameAsString)
-                .filter(name -> !publicMethodNames.contains(name))
+                .filter(privateMethodNames::contains)
                 .distinct()
                 .toList();
         if (!forbiddenSubjectCalls.isEmpty()) {
-            errors.add("Falha estrutural: o teste chama metodos nao publicos ou inexistentes da classe alvo: "
+            errors.add("Falha estrutural: o teste chama metodos privados da classe alvo: "
                     + String.join(", ", forbiddenSubjectCalls) + ".");
         }
 

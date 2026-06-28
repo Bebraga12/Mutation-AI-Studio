@@ -55,7 +55,9 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
         // O AI recebe a versão sanitizada (sem comentários) para economizar tokens
         String sourceCode = sanitizeSourceCode(rawSourceCode);
         List<String> dependencies = combineDependencies(analysis);
-        String prompt = buildPrompt(candidate, sourceCode, dependencies, analysis);
+        String relatedTypes = buildRelatedTypesBlock(projectRoot, candidate, analysis);
+        boolean needsMockito = requiresMockito(projectRoot, dependencies, analysis);
+        String prompt = buildPrompt(candidate, sourceCode, dependencies, analysis, relatedTypes, needsMockito);
 
         return new ClassTestPrompt(
                 candidate.className(),
@@ -136,7 +138,204 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
         return builder.toString().trim();
     }
 
-    private String buildPrompt(JavaClassCandidate candidate, String sourceCode, List<String> dependencies, ClassAnalysis analysis) {
+    private String buildPrompt(JavaClassCandidate candidate, String sourceCode, List<String> dependencies,
+                               ClassAnalysis analysis, String relatedTypes, boolean needsMockito) {
+        // O caminho SEM Mockito serve apenas para entidades/exceptions/POJOs puros: classes sem
+        // dependências injetadas E cujos métodos públicos só recebem tipos facilmente
+        // construíveis (valores ou tipos do próprio projeto). Forçar @Mock nesses casos faz o
+        // modelo gerar absurdos como `@Mock private String message`.
+        //
+        // Atenção: uma classe pode NÃO ter dependências injetadas e ainda assim precisar de
+        // Mockito — ex.: @ControllerAdvice cujos handlers recebem MethodArgumentNotValidException,
+        // ou um JwtService cujos métodos recebem UserDetails/Function. Esses precisam mockar os
+        // ARGUMENTOS, então usam o caminho Mockito (com instanciação direta, pois não há o que
+        // injetar).
+        if (!needsMockito) {
+            return buildPlainPrompt(candidate, sourceCode, analysis, relatedTypes);
+        }
+        return buildMockitoPrompt(candidate, sourceCode, dependencies, analysis, relatedTypes);
+    }
+
+    /**
+     * Decide se a classe sob teste precisa de Mockito. Precisa se:
+     * (a) tem dependências injetadas (colaboradores), OU
+     * (b) algum método público recebe um parâmetro que NÃO é trivialmente construível
+     *     (não é tipo-valor nem tipo do próprio projeto) — ex.: interfaces/classes de framework
+     *     como UserDetails, MethodArgumentNotValidException, Function, HttpServletRequest.
+     */
+    private boolean requiresMockito(Path projectRoot, List<String> dependencies, ClassAnalysis analysis) {
+        if (!dependencies.isEmpty()) {
+            return true;
+        }
+        for (MethodAnalysis method : analysis.publicMethods()) {
+            for (String parameter : method.parameters()) {
+                if (parameterNeedsMock(projectRoot, parameter, analysis.importedTypes())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean parameterNeedsMock(Path projectRoot, String parameter, List<String> importedTypes) {
+        // parameter vem como "Tipo nome" (ex.: "Long id", "Function<Claims, T> resolver").
+        int lastSpace = parameter.lastIndexOf(' ');
+        String type = lastSpace > 0 ? parameter.substring(0, lastSpace) : parameter;
+        int generics = type.indexOf('<');
+        if (generics >= 0) {
+            type = type.substring(0, generics);
+        }
+        type = type.replace("[]", "").trim();
+        int dot = type.lastIndexOf('.');
+        if (dot >= 0) {
+            type = type.substring(dot + 1);
+        }
+        if (type.isEmpty() || VALUE_PARAM_TYPES.contains(type)) {
+            return false; // tipo-valor → construível com literal
+        }
+        if (isProjectType(projectRoot, type, importedTypes)) {
+            return false; // tipo do projeto → fornecemos a API / construível
+        }
+        return true; // framework/interface → precisa de mock
+    }
+
+    private boolean isProjectType(Path projectRoot, String simpleName, List<String> importedTypes) {
+        Path sourceRoot = projectRoot.resolve("src/main/java");
+        for (String fqn : importedTypes) {
+            if (fqn == null) {
+                continue;
+            }
+            String simple = fqn.contains(".") ? fqn.substring(fqn.lastIndexOf('.') + 1) : fqn;
+            if (simple.equals(simpleName)
+                    && Files.isRegularFile(sourceRoot.resolve(fqn.replace('.', '/') + ".java"))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final java.util.Set<String> VALUE_PARAM_TYPES = java.util.Set.of(
+            "byte", "short", "int", "long", "float", "double", "boolean", "char",
+            "Byte", "Short", "Integer", "Long", "Float", "Double", "Boolean", "Character",
+            "String", "CharSequence", "Object", "Number",
+            "BigDecimal", "BigInteger",
+            "LocalDate", "LocalDateTime", "LocalTime", "Instant", "Date", "Duration", "Period", "UUID",
+            "List", "ArrayList", "Set", "HashSet", "Map", "HashMap", "Collection", "Optional"
+    );
+
+    /**
+     * Monta a seção "RELATED PROJECT TYPES" com a API real (construtores + métodos) dos tipos
+     * do projeto que a classe sob teste referencia. Evita que o modelo invente construtores
+     * e setters de entidades colaboradoras. Retorna string vazia se nada for aplicável.
+     */
+    private String buildRelatedTypesBlock(Path projectRoot, JavaClassCandidate candidate, ClassAnalysis analysis) {
+        List<RelatedTypeApiExtractor.TypeApi> apis =
+                RelatedTypeApiExtractor.extract(projectRoot, candidate.className(), analysis.importedTypes());
+        if (apis.isEmpty()) {
+            return "";
+        }
+        String nl = System.lineSeparator();
+        StringBuilder sb = new StringBuilder();
+        sb.append("RELATED PROJECT TYPES — use ONLY these EXACT constructors and methods to build test data.").append(nl);
+        sb.append("Do NOT invent constructors, setters or field names that are not listed here:").append(nl);
+        for (RelatedTypeApiExtractor.TypeApi api : apis) {
+            sb.append("• ").append(api.simpleName()).append(nl);
+            if (!api.constructors().isEmpty()) {
+                sb.append("    constructors: ").append(String.join(" | ", api.constructors())).append(nl);
+            }
+            if (!api.methods().isEmpty()) {
+                sb.append("    methods: ").append(String.join(", ", api.methods())).append(nl);
+            }
+        }
+        sb.append(nl);
+        return sb.toString();
+    }
+
+    private String buildPlainPrompt(JavaClassCandidate candidate, String sourceCode, ClassAnalysis analysis,
+                                    String relatedTypes) {
+        String nl = System.lineSeparator();
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("Generate a JUnit 5 unit test file for the Java class below.").append(nl);
+        sb.append("Output ONLY raw Java code. No markdown, no explanation, no code fences.").append(nl);
+        sb.append(nl);
+
+        sb.append("TEST CLASS: ").append(candidate.className()).append("Test").append(nl);
+        sb.append("PACKAGE: ").append(analysis.packageName()).append(nl);
+        sb.append(nl);
+
+        sb.append("This class has NO injected dependencies (it is a POJO / entity / exception / value object).").append(nl);
+        sb.append("Write a PLAIN unit test. Do NOT use Mockito at all:").append(nl);
+        sb.append("- NO @ExtendWith(MockitoExtension.class), NO @Mock, NO @InjectMocks.").append(nl);
+        sb.append("- NO mock(), when(), verify(), thenReturn(). NEVER mock final types like String, Integer, Long.").append(nl);
+        sb.append("- Instantiate the class DIRECTLY with `new ").append(candidate.className()).append("(...)`.").append(nl);
+        if (analysis.constructorSignature() != null && !analysis.constructorSignature().isBlank()) {
+            sb.append("- Available constructor(s): ").append(analysis.constructorSignature()).append(nl);
+            sb.append("  Use ONLY a constructor that literally appears in the SOURCE CLASS below — do not invent argument lists.").append(nl);
+        }
+        sb.append(nl);
+
+        boolean isException = candidate.className().endsWith("Exception")
+                || sourceCode.contains("extends RuntimeException")
+                || sourceCode.contains("extends Exception");
+        if (isException) {
+            sb.append("This is a custom EXCEPTION class. Test it like this:").append(nl);
+            sb.append("    String msg = \"some message\";").append(nl);
+            sb.append("    ").append(candidate.className()).append(" ex = new ").append(candidate.className()).append("(msg);").append(nl);
+            sb.append("    assertEquals(msg, ex.getMessage());").append(nl);
+            sb.append("    assertTrue(ex instanceof RuntimeException);").append(nl);
+            sb.append("Do NOT mock the message String. Pass a real String literal.").append(nl);
+            sb.append(nl);
+        }
+
+        List<String> testImports = filterTestRelevantImports(analysis.importedTypes());
+        if (!testImports.isEmpty()) {
+            sb.append("IMPORTS TO USE (exact FQNs from source class — do not invent others):").append(nl);
+            for (String imp : testImports) {
+                sb.append("  ").append(imp).append(nl);
+            }
+            sb.append(nl);
+        }
+
+        if (!relatedTypes.isBlank()) {
+            sb.append(relatedTypes);
+        }
+
+        if (!analysis.publicMethods().isEmpty()) {
+            sb.append("METHODS TO TEST (call <instance>.<method> with EXACTLY the parameter types listed):").append(nl);
+            sb.append(buildPublicMethodsBlock(analysis)).append(nl);
+            sb.append(nl);
+        }
+
+        if (!analysis.nonPublicMethodNames().isEmpty()) {
+            sb.append("FORBIDDEN — DO NOT CALL FROM TEST (private/protected — causes compilation error):").append(nl);
+            for (String name : analysis.nonPublicMethodNames()) {
+                sb.append("  ").append(name).append("(...)").append(nl);
+            }
+            sb.append(nl);
+        }
+
+        sb.append("COVERAGE RULES:").append(nl);
+        sb.append("- one focused @Test method per public method (and per getter/setter pair).").append(nl);
+        sb.append("- assert the actual return value, not just non-null.").append(nl);
+        sb.append("- for a setter/getter pair: set a value, then assert the getter returns EXACTLY that value.").append(nl);
+        sb.append("- cover each branch (if/else, ternary, guard clause) the method body contains.").append(nl);
+        if (analysis.usesExceptions()) {
+            sb.append("- use assertThrows(SpecificException.class, () -> ...) for paths that throw.").append(nl);
+        }
+        sb.append("- create test data with real literal values (\"text\" for String, 2023 for int/Integer, 1L for Long).").append(nl);
+        sb.append("- use descriptive test method names.").append(nl);
+        sb.append("- only call PUBLIC methods; never private/protected ones.").append(nl);
+        sb.append(nl);
+
+        sb.append("SOURCE CLASS:").append(nl);
+        sb.append(sourceCode);
+
+        return sb.toString();
+    }
+
+    private String buildMockitoPrompt(JavaClassCandidate candidate, String sourceCode, List<String> dependencies,
+                                      ClassAnalysis analysis, String relatedTypes) {
         String nl = System.lineSeparator();
         StringBuilder sb = new StringBuilder();
 
@@ -169,6 +368,24 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
                 sb.append("Do NOT use @SpringBootTest or @Autowired in the test.").append(nl);
             }
             sb.append(nl);
+        } else {
+            // Sem dependências injetadas, mas a classe precisa de Mockito para mockar ARGUMENTOS
+            // dos métodos (ex.: @ControllerAdvice, JwtService). Não há o que injetar, então o
+            // subject é criado diretamente; os mocks são variáveis locais nos @Test.
+            sb.append("REQUIRED TEST CLASS HEADER — copy this EXACTLY:").append(nl);
+            sb.append("@ExtendWith(MockitoExtension.class)").append(nl);
+            sb.append("public class ").append(candidate.className()).append("Test {").append(nl);
+            sb.append(nl);
+            sb.append("    private final ").append(candidate.className()).append(" subject = new ")
+                    .append(candidate.className()).append("();").append(nl);
+            sb.append(nl);
+            sb.append("    // @Test methods go here").append(nl);
+            sb.append("}").append(nl);
+            sb.append("This class has NO injected dependencies — create `subject` directly with its constructor (as shown).").append(nl);
+            sb.append("Do NOT use @InjectMocks here. Mock only the METHOD ARGUMENTS that are framework types,").append(nl);
+            sb.append("as local variables inside each @Test (e.g. mock(MethodArgumentNotValidException.class)).").append(nl);
+            sb.append("Do NOT use @SpringBootTest or @Autowired.").append(nl);
+            sb.append(nl);
         }
 
         List<String> testImports = filterTestRelevantImports(analysis.importedTypes());
@@ -178,6 +395,10 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
                 sb.append("  ").append(imp).append(nl);
             }
             sb.append(nl);
+        }
+
+        if (!relatedTypes.isBlank()) {
+            sb.append(relatedTypes);
         }
 
         if (!analysis.publicMethods().isEmpty()) {
@@ -224,11 +445,11 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
                 sb.append("  subject.handle03(anyException)                   — Exception ONLY").append(nl);
                 sb.append(nl);
                 sb.append("EXACT PATTERN for handle01 (@ExceptionHandler(MethodArgumentNotValidException.class)):").append(nl);
-                sb.append("    @Mock private MethodArgumentNotValidException mave;").append(nl);
+                sb.append("    MethodArgumentNotValidException mave = mock(MethodArgumentNotValidException.class);").append(nl);
                 sb.append("    // In test:").append(nl);
                 sb.append("    org.springframework.validation.BindingResult br = mock(org.springframework.validation.BindingResult.class);").append(nl);
-                sb.append("    org.springframework.validation.FieldError fe = mock(org.springframework.validation.FieldError.class);").append(nl);
-                sb.append("    when(fe.getField()).thenReturn(\"field\"); when(fe.getDefaultMessage()).thenReturn(\"error\");").append(nl);
+                sb.append("    // Use a REAL FieldError — do NOT mock it: FieldError has final methods that Mockito cannot stub.").append(nl);
+                sb.append("    org.springframework.validation.FieldError fe = new org.springframework.validation.FieldError(\"obj\", \"field\", \"error\");").append(nl);
                 sb.append("    when(br.getFieldErrors()).thenReturn(java.util.List.of(fe));").append(nl);
                 sb.append("    when(mave.getBindingResult()).thenReturn(br);  // stub BindingResult SEPARATELY").append(nl);
                 sb.append("    ResponseEntity<?> r = subject.handle01(mave);  // pass mave (MethodArgumentNotValidException)").append(nl);
@@ -258,6 +479,10 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
         sb.append("- CRITICAL — assert ONLY what the code actually does: read the method body carefully.").append(nl);
         sb.append("  If the method always returns the same value (e.g. `return new ResponseEntity<>(x, HttpStatus.OK)`),").append(nl);
         sb.append("  assert exactly that value. Do NOT assert status codes or return values that the code cannot produce.").append(nl);
+        sb.append("- CRITICAL — do NOT invent failure/error tests. If the method body has NO if/else, no try/catch and no").append(nl);
+        sb.append("  throw, it has exactly ONE behaviour: write exactly ONE happy-path @Test. NEVER add a `_Failure`,").append(nl);
+        sb.append("  `_NotFound`, `_Null` or `_Exception` test asserting a status/exception the code cannot produce").append(nl);
+        sb.append("  (e.g. asserting 500 INTERNAL_SERVER_ERROR for a method that unconditionally returns 200 OK).").append(nl);
         sb.append("- cover each branch (if/else, orElse, ternary, guard clause)").append(nl);
         if (analysis.usesOptional()) {
             sb.append("- mock Optional.of(...) for found and Optional.empty() for not-found paths").append(nl);
@@ -310,6 +535,17 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
             sb.append("- ALWAYS create test tokens using the service's own `subject.generateToken(user)` method.").append(nl);
             sb.append("  Flow: `String token = subject.generateToken(user); subject.extractUsername(token);`").append(nl);
             sb.append("- The `generateToken` call on the SAME `subject` instance uses the SAME key → tokens are valid.").append(nl);
+            sb.append("- CRITICAL — testing generateToken itself: the returned token is an OPAQUE base64url JWT string.").append(nl);
+            sb.append("  NEVER assert `token.contains(\"username\")` / `token.contains(\"ROLE\")` — claims are ENCODED, not plaintext.").append(nl);
+            sb.append("  Instead assert: `assertNotNull(token);` and `assertEquals(3, token.split(\"\\\\.\").length);` (header.payload.signature),").append(nl);
+            sb.append("  and round-trip the value: `assertEquals(user.getUsername(), subject.extractUsername(token));`").append(nl);
+            sb.append("- To build a UserDetails for isTokenValid: if the user object passed to generateToken already").append(nl);
+            sb.append("  implements UserDetails (it has getUsername()/getPassword() in RELATED PROJECT TYPES), reuse that SAME").append(nl);
+            sb.append("  object — pass it to isTokenValid too. Its username already matches the token's subject.").append(nl);
+            sb.append("- If you build `new org.springframework.security.core.userdetails.User(name, password, authorities)`,").append(nl);
+            sb.append("  the username MUST equal the token subject and the password MUST be a non-empty literal like \"password\".").append(nl);
+            sb.append("  NEVER pass `usuario.getPassword()` — it is usually null and the User constructor rejects null/empty.").append(nl);
+            sb.append("  Use `java.util.Collections.emptyList()` for authorities.").append(nl);
             sb.append(nl);
         }
         sb.append("- CRITICAL — collaborator return types: infer the return type of each collaborator call from the").append(nl);

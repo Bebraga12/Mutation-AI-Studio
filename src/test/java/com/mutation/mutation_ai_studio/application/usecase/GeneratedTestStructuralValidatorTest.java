@@ -40,7 +40,7 @@ class GeneratedTestStructuralValidatorTest {
 
         assertFalse(errors.isEmpty());
         assertTrue(errors.stream().anyMatch(error -> error.contains("anotacoes proibidas")));
-        assertTrue(errors.stream().anyMatch(error -> error.contains("nao publicos ou inexistentes")));
+        assertTrue(errors.stream().anyMatch(error -> error.contains("metodos privados")));
     }
 
     @Test

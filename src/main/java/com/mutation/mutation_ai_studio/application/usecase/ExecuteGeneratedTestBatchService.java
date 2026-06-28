@@ -82,7 +82,7 @@ public class ExecuteGeneratedTestBatchService implements ExecuteGeneratedTestBat
                 }
             }
 
-            if (feedback == null || !feedback.passed()) {
+            if ((feedback == null || !feedback.passed()) && !"1".equals(System.getenv("MUTATION_AI_DISABLE_FALLBACK"))) {
                 FallbackOutcome fallback = tryFallback(projectRoot, candidate);
                 if (fallback != null) {
                     candidate = fallback.candidate();

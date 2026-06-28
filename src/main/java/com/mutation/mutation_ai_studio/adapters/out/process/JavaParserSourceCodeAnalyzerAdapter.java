@@ -63,8 +63,15 @@ public class JavaParserSourceCodeAnalyzerAdapter implements SourceCodeAnalyzerPo
                 ? primaryConstructor.getDeclarationAsString(false, false, false)
                 : "nenhum construtor explícito identificado";
 
+        // Apenas colaboradores REALMENTE injetáveis contam como dependência (→ caminho Mockito).
+        // Campos de estado de entidades (Long id, String marca…) e campos internos já
+        // inicializados inline (Map bancoEmMemoria = new HashMap<>(), AtomicLong seq = ...)
+        // NÃO são dependências: tratá-los como tal fazia o modelo gerar `@Mock private String`,
+        // que é absurdo. Filtramos por tipo injetável e por ausência de inicializador inline.
         List<String> fieldDependencies = declaration.getFields().stream()
                 .filter(field -> !field.isStatic())
+                .filter(field -> field.getVariable(0).getInitializer().isEmpty())
+                .filter(field -> isInjectableType(field.getElementType().asString()))
                 .map(this::formatField)
                 .toList();
 
@@ -120,8 +127,42 @@ public class JavaParserSourceCodeAnalyzerAdapter implements SourceCodeAnalyzerPo
 
     private List<String> extractConstructorDependencies(ConstructorDeclaration constructor) {
         return constructor.getParameters().stream()
+                .filter(parameter -> isInjectableType(parameter.getType().asString()))
                 .map(parameter -> parameter.getType().asString() + " " + parameter.getNameAsString())
                 .toList();
+    }
+
+    /**
+     * Tipos que NUNCA são colaboradores injetáveis (não se "mocka" um String ou um int).
+     * Usado para decidir se uma classe usa o caminho de teste com Mockito ou um teste simples.
+     */
+    private static final Set<String> NON_INJECTABLE_RAW_TYPES = Set.of(
+            "byte", "short", "int", "long", "float", "double", "boolean", "char",
+            "Byte", "Short", "Integer", "Long", "Float", "Double", "Boolean", "Character",
+            "String", "CharSequence", "Object", "Number", "Void",
+            "BigDecimal", "BigInteger",
+            "LocalDate", "LocalDateTime", "LocalTime", "Instant", "Date", "Duration", "Period", "UUID",
+            "List", "ArrayList", "LinkedList", "Set", "HashSet", "LinkedHashSet", "TreeSet",
+            "Map", "HashMap", "LinkedHashMap", "TreeMap", "ConcurrentHashMap",
+            "Collection", "Optional", "Stream",
+            "AtomicLong", "AtomicInteger", "AtomicBoolean", "AtomicReference"
+    );
+
+    private boolean isInjectableType(String typeAsString) {
+        String raw = typeAsString;
+        int generics = raw.indexOf('<');
+        if (generics >= 0) {
+            raw = raw.substring(0, generics);
+        }
+        raw = raw.replace("[]", "").trim();
+        int dot = raw.lastIndexOf('.');
+        if (dot >= 0) {
+            raw = raw.substring(dot + 1);
+        }
+        if (raw.isEmpty()) {
+            return false;
+        }
+        return !NON_INJECTABLE_RAW_TYPES.contains(raw);
     }
 
     private String formatField(FieldDeclaration field) {

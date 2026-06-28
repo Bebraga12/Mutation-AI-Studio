@@ -24,6 +24,8 @@ final class GeneratedTestSourceNormalizer {
             "java.util.Set",
             "java.util.Map",
             "java.util.HashMap",
+            "java.util.Collections",
+            "java.util.Arrays",
             "org.junit.jupiter.api.Test",
             "org.junit.jupiter.api.BeforeEach",
             "org.junit.jupiter.api.extension.ExtendWith",
@@ -165,10 +167,14 @@ final class GeneratedTestSourceNormalizer {
             }
         }
 
-        // Step 4: add @ExtendWith(MockitoExtension.class) if not already on the class
+        // Step 4: add @ExtendWith(MockitoExtension.class) ONLY when the test actually uses Mockito
+        // (has @Mock or @InjectMocks fields). POJO/entity/exception tests instantiate the target
+        // directly and must stay free of the Mockito extension.
+        boolean usesMockito = testClass.getFields().stream()
+                .anyMatch(f -> f.isAnnotationPresent("Mock") || f.isAnnotationPresent("InjectMocks"));
         boolean hasExtendWith = testClass.getAnnotations().stream()
                 .anyMatch(a -> a.getNameAsString().equals("ExtendWith"));
-        if (!hasExtendWith) {
+        if (usesMockito && !hasExtendWith) {
             addExtendWithAnnotation(testClass);
         }
     }

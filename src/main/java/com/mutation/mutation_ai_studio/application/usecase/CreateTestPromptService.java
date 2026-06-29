@@ -50,9 +50,7 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
     private ClassTestPrompt toPrompt(Path projectRoot, JavaClassCandidate candidate) {
         Path sourceFile = projectRoot.resolve("src/main/java").resolve(candidate.relativePath()).normalize();
         String rawSourceCode = readSourceCode(sourceFile);
-        // JavaParser recebe o source original — strings com "://" não são confundidas com comentários
         ClassAnalysis analysis = sourceCodeAnalyzerPort.analyze(projectRoot, candidate, rawSourceCode);
-        // O AI recebe a versão sanitizada (sem comentários) para economizar tokens
         String sourceCode = sanitizeSourceCode(rawSourceCode);
         List<String> dependencies = combineDependencies(analysis);
         String relatedTypes = buildRelatedTypesBlock(projectRoot, candidate, analysis);
@@ -140,29 +138,12 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
 
     private String buildPrompt(JavaClassCandidate candidate, String sourceCode, List<String> dependencies,
                                ClassAnalysis analysis, String relatedTypes, boolean needsMockito) {
-        // O caminho SEM Mockito serve apenas para entidades/exceptions/POJOs puros: classes sem
-        // dependências injetadas E cujos métodos públicos só recebem tipos facilmente
-        // construíveis (valores ou tipos do próprio projeto). Forçar @Mock nesses casos faz o
-        // modelo gerar absurdos como `@Mock private String message`.
-        //
-        // Atenção: uma classe pode NÃO ter dependências injetadas e ainda assim precisar de
-        // Mockito — ex.: @ControllerAdvice cujos handlers recebem MethodArgumentNotValidException,
-        // ou um JwtService cujos métodos recebem UserDetails/Function. Esses precisam mockar os
-        // ARGUMENTOS, então usam o caminho Mockito (com instanciação direta, pois não há o que
-        // injetar).
         if (!needsMockito) {
             return buildPlainPrompt(candidate, sourceCode, analysis, relatedTypes);
         }
         return buildMockitoPrompt(candidate, sourceCode, dependencies, analysis, relatedTypes);
     }
 
-    /**
-     * Decide se a classe sob teste precisa de Mockito. Precisa se:
-     * (a) tem dependências injetadas (colaboradores), OU
-     * (b) algum método público recebe um parâmetro que NÃO é trivialmente construível
-     *     (não é tipo-valor nem tipo do próprio projeto) — ex.: interfaces/classes de framework
-     *     como UserDetails, MethodArgumentNotValidException, Function, HttpServletRequest.
-     */
     private boolean requiresMockito(Path projectRoot, List<String> dependencies, ClassAnalysis analysis) {
         if (!dependencies.isEmpty()) {
             return true;
@@ -178,7 +159,6 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
     }
 
     private boolean parameterNeedsMock(Path projectRoot, String parameter, List<String> importedTypes) {
-        // parameter vem como "Tipo nome" (ex.: "Long id", "Function<Claims, T> resolver").
         int lastSpace = parameter.lastIndexOf(' ');
         String type = lastSpace > 0 ? parameter.substring(0, lastSpace) : parameter;
         int generics = type.indexOf('<');
@@ -191,12 +171,12 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
             type = type.substring(dot + 1);
         }
         if (type.isEmpty() || VALUE_PARAM_TYPES.contains(type)) {
-            return false; // tipo-valor → construível com literal
+            return false;
         }
         if (isProjectType(projectRoot, type, importedTypes)) {
-            return false; // tipo do projeto → fornecemos a API / construível
+            return false;
         }
-        return true; // framework/interface → precisa de mock
+        return true;
     }
 
     private boolean isProjectType(Path projectRoot, String simpleName, List<String> importedTypes) {
@@ -223,11 +203,6 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
             "List", "ArrayList", "Set", "HashSet", "Map", "HashMap", "Collection", "Optional"
     );
 
-    /**
-     * Monta a seção "RELATED PROJECT TYPES" com a API real (construtores + métodos) dos tipos
-     * do projeto que a classe sob teste referencia. Evita que o modelo invente construtores
-     * e setters de entidades colaboradoras. Retorna string vazia se nada for aplicável.
-     */
     private String buildRelatedTypesBlock(Path projectRoot, JavaClassCandidate candidate, ClassAnalysis analysis) {
         List<RelatedTypeApiExtractor.TypeApi> apis =
                 RelatedTypeApiExtractor.extract(projectRoot, candidate.className(), analysis.importedTypes());
@@ -369,9 +344,6 @@ public class CreateTestPromptService implements CreateTestPromptUseCase {
             }
             sb.append(nl);
         } else {
-            // Sem dependências injetadas, mas a classe precisa de Mockito para mockar ARGUMENTOS
-            // dos métodos (ex.: @ControllerAdvice, JwtService). Não há o que injetar, então o
-            // subject é criado diretamente; os mocks são variáveis locais nos @Test.
             sb.append("REQUIRED TEST CLASS HEADER — copy this EXACTLY:").append(nl);
             sb.append("@ExtendWith(MockitoExtension.class)").append(nl);
             sb.append("public class ").append(candidate.className()).append("Test {").append(nl);

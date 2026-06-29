@@ -13,11 +13,6 @@ import org.springframework.stereotype.Component;
 @Primary
 public class OllamaAiTestGeneratorAdapter implements AiTestGeneratorPort {
 
-    /**
-     * System message que ancora o comportamento do modelo de código local.
-     * Mantido curto e imperativo: modelos como qwen2.5-coder seguem melhor
-     * instruções no system role do que diluídas no meio de um prompt enorme.
-     */
     private static final String SYSTEM_PROMPT = String.join("\n",
             "You are a senior Java test engineer. You write JUnit 5 + Mockito unit tests that COMPILE and PASS on the first run.",
             "Hard rules you NEVER break:",
@@ -31,36 +26,14 @@ public class OllamaAiTestGeneratorAdapter implements AiTestGeneratorPort {
     private final ChatClient chatClient;
     private final OllamaModelConfig modelConfig;
 
-    /**
-     * Tamanho da janela de contexto (num_ctx) enviada ao Ollama.
-     *
-     * <p>CRÍTICO: o Ollama usa num_ctx=2048/4096 por padrão. O prompt gerado por
-     * {@code CreateTestPromptService} (regras + análise + código fonte) já passa de
-     * 2000 tokens para classes triviais, e os prompts de refinamento (prompt original +
-     * erros do Maven + teste anterior) facilmente ultrapassam 6000 tokens. Sem fixar
-     * num_ctx, o Ollama TRUNCA silenciosamente o prompt — descartando justamente o
-     * SOURCE CLASS (que fica no fim) e as regras de refinamento. O modelo então
-     * "alucina" a classe alvo, gerando testes que não compilam. Fixar um num_ctx amplo
-     * é a maior alavanca de qualidade. qwen2.5-coder suporta até 32k.
-     */
     private final int numCtx;
 
-    /**
-     * Limite de tokens de saída (num_predict). Um arquivo de teste completo com vários
-     * métodos @Test pode passar de 2048 tokens; se cortado no meio, não compila.
-     */
     private final int numPredict;
 
     private final double temperature;
     private final double topP;
     private final double repeatPenalty;
 
-    /**
-     * Decodificação determinística: temperatura 0 (greedy) + seed fixo fazem a MESMA classe gerar
-     * o MESMO teste a cada execução, eliminando a variância "às vezes bom, às vezes lixo". O loop de
-     * refinamento ainda explora soluções diferentes porque cada tentativa recebe um prompt distinto
-     * (com os erros reais do Maven), então o determinismo não reduz a capacidade de recuperação.
-     */
     private final int seed;
 
     public OllamaAiTestGeneratorAdapter(

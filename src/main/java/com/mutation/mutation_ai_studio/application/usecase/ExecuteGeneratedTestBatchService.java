@@ -100,13 +100,6 @@ public class ExecuteGeneratedTestBatchService implements ExecuteGeneratedTestBat
         return results;
     }
 
-    /**
-     * Last-resort fallback for when the AI (qwen2.5-coder:7b) exhausted every refinement
-     * attempt without producing a passing test. Generates a minimal but always-compilable
-     * smoke test (mocks every dependency, instantiates the target via @InjectMocks and asserts
-     * it is not null). If it compiles and passes, the class still ends up with at least one
-     * green test and a small mutation-coverage gain instead of zero.
-     */
     private FallbackOutcome tryFallback(Path projectRoot, GeneratedTestCandidate candidate) {
         GeneratedTestCandidate fallbackCandidate = new GeneratedTestCandidate(
                 candidate.prompt(),

@@ -53,10 +53,6 @@ final class GeneratedTestSourceNormalizer {
         sanitized = sanitized.replace("import org.mockito.MockitoExtension;", "import org.mockito.junit.jupiter.MockitoExtension;");
         sanitized = sanitized.replace("org.mockito.MockitoExtension", "org.mockito.junit.jupiter.MockitoExtension");
 
-        // Checked Exception → RuntimeException: thenThrow/doThrow with 'new Exception' causes
-        // MockitoException when the mocked method doesn't declare 'throws Exception'.
-        // Replacing with RuntimeException (unchecked) is always safe for mocks that don't
-        // explicitly declare checked exceptions.
         sanitized = replaceCheckedExceptionInStubs(sanitized);
 
         try {
@@ -110,27 +106,10 @@ final class GeneratedTestSourceNormalizer {
                 || qualifiedName.startsWith("javax.persistence.");
     }
 
-    /**
-     * Pattern matching a @BeforeEach body that ONLY calls MockitoAnnotations.openMocks(this)
-     * or MockitoAnnotations.initMocks(this) — i.e., no other statements.
-     */
     private static final Pattern ONLY_OPEN_MOCKS_BODY = Pattern.compile(
             "\\{\\s*MockitoAnnotations\\.(?:openMocks|initMocks)\\(this\\);\\s*\\}"
     );
 
-    /**
-     * Ensures the test class is properly set up for Mockito mock injection.
-     *
-     * Strategy:
-     * 1. Collect all @BeforeEach methods that use MockitoAnnotations.openMocks / initMocks.
-     * 2. If any @BeforeEach contains ONLY the openMocks call → remove that method.
-     * 3. If openMocks is still used (alongside other code) after step 2 →
-     *    keep it but ensure org.mockito.MockitoAnnotations is imported.
-     * 4. If @ExtendWith(MockitoExtension.class) is not yet on the class → add it.
-     *
-     * Note: the cleanup runs even when @ExtendWith is already present — the AI sometimes
-     * generates BOTH @ExtendWith AND a redundant openMocks @BeforeEach without the import.
-     */
     private static void ensureMockitoExtension(CompilationUnit compilationUnit) {
         ClassOrInterfaceDeclaration testClass = compilationUnit
                 .findFirst(ClassOrInterfaceDeclaration.class)
@@ -139,7 +118,6 @@ final class GeneratedTestSourceNormalizer {
             return;
         }
 
-        // Step 1: collect @BeforeEach methods that use openMocks / initMocks
         List<MethodDeclaration> openMocksMethods = testClass.getMethods().stream()
                 .filter(m -> m.isAnnotationPresent("BeforeEach"))
                 .filter(m -> {
@@ -150,7 +128,6 @@ final class GeneratedTestSourceNormalizer {
                 .toList();
 
         if (!openMocksMethods.isEmpty()) {
-            // Step 2: remove @BeforeEach methods that ONLY contain the openMocks call
             openMocksMethods.stream()
                     .filter(m -> {
                         String body = m.getBody().map(b -> b.toString().trim()).orElse("");
@@ -158,7 +135,6 @@ final class GeneratedTestSourceNormalizer {
                     })
                     .forEach(MethodDeclaration::remove);
 
-            // Step 3: if openMocks is still used, ensure import
             boolean stillHasOpenMocks = testClass.getMethods().stream()
                     .anyMatch(m -> m.toString().contains("MockitoAnnotations.openMocks")
                             || m.toString().contains("MockitoAnnotations.initMocks"));
@@ -167,9 +143,6 @@ final class GeneratedTestSourceNormalizer {
             }
         }
 
-        // Step 4: add @ExtendWith(MockitoExtension.class) ONLY when the test actually uses Mockito
-        // (has @Mock or @InjectMocks fields). POJO/entity/exception tests instantiate the target
-        // directly and must stay free of the Mockito extension.
         boolean usesMockito = testClass.getFields().stream()
                 .anyMatch(f -> f.isAnnotationPresent("Mock") || f.isAnnotationPresent("InjectMocks"));
         boolean hasExtendWith = testClass.getAnnotations().stream()
@@ -188,26 +161,7 @@ final class GeneratedTestSourceNormalizer {
         testClass.addAnnotation(extendWith);
     }
 
-    /**
-     * Replaces {@code new Exception(...)} in Mockito stub calls (thenThrow / doThrow) with
-     * {@code new RuntimeException(...)}.
-     *
-     * <p>The AI frequently uses {@code thenThrow(new Exception())} for mocked methods that do NOT
-     * declare {@code throws Exception}. Mockito's strict mode rejects checked exceptions on such
-     * methods with "Checked exception is invalid for this method!" — a runtime error that fails every
-     * test. Replacing {@code Exception} with {@code RuntimeException} is safe because:
-     * <ul>
-     *   <li>RuntimeException is unchecked — always valid for any Mockito stub.</li>
-     *   <li>The production {@code catch (Exception e)} block catches both checked and unchecked
-     *       exceptions, so the branch-coverage goal is preserved.</li>
-     * </ul>
-     * Only occurrences that immediately follow {@code thenThrow(} or {@code doThrow(} are changed,
-     * minimising false positives.
-     */
     private static String replaceCheckedExceptionInStubs(String code) {
-        // Match thenThrow(new Exception or doThrow(new Exception immediately followed by '(' or ')'
-        // We replace only "new Exception" (the base class) — subclasses like IOException,
-        // IllegalArgumentException etc. are left alone since the developer may have had a reason.
         code = code.replace("thenThrow(new Exception()", "thenThrow(new RuntimeException())")
                    .replace("thenThrow(new Exception(\"", "thenThrow(new RuntimeException(\"")
                    .replace("doThrow(new Exception()", "doThrow(new RuntimeException())")
@@ -215,20 +169,6 @@ final class GeneratedTestSourceNormalizer {
         return code;
     }
 
-    /**
-     * Adds well-known companion imports that the AI frequently needs but that the production class
-     * often doesn't import explicitly (because they are accessed via method return types, not declared
-     * as field/parameter types).
-     *
-     * <ul>
-     *   <li>{@code org.springframework.validation.BindingResult} — needed in tests that mock
-     *       {@code MethodArgumentNotValidException.getBindingResult()}.  The production source uses
-     *       {@code ex.getBindingResult()} but never imports the return type.
-     *   <li>{@code org.springframework.security.core.userdetails.UserDetails} — needed in tests that
-     *       mock the result of {@code UserDetailsService.loadUserByUsername()}.  The production class
-     *       usually only imports {@code UserDetailsService}, not the value it returns.
-     * </ul>
-     */
     private static void ensureSpringValidationImports(CompilationUnit compilationUnit) {
         String sourceText = compilationUnit.toString();
 
@@ -253,21 +193,6 @@ final class GeneratedTestSourceNormalizer {
         }
     }
 
-    /**
-     * Removes Spring/Jakarta production-side annotations from the test class declaration.
-     *
-     * <p>The AI sometimes annotates the generated test class with production annotations such as
-     * {@code @ControllerAdvice}, {@code @Service}, {@code @RestController}, etc. These annotations
-     * belong to the production class under test, not the test class. In the test context:
-     * <ul>
-     *   <li>Their imports are filtered by {@link #isProductionSideImport} — so they wouldn't be
-     *       re-added even if missing.</li>
-     *   <li>When the AI includes the annotation AND the import, the normalizer removes the import
-     *       but leaves the annotation, causing a {@code cannot find symbol: class ControllerAdvice}
-     *       compilation error.</li>
-     * </ul>
-     * This step removes any such annotations from the primary test class declaration.
-     */
     private static final java.util.Set<String> PRODUCTION_CLASS_ANNOTATIONS = java.util.Set.of(
             "ControllerAdvice", "RestControllerAdvice",
             "RestController", "Controller",
@@ -282,16 +207,6 @@ final class GeneratedTestSourceNormalizer {
         );
     }
 
-    /**
-     * Adds {@code throws Exception} to every {@code @Test} method that does not already declare a
-     * thrown exception.
-     *
-     * <p>Tests often call methods that declare {@code throws IOException}, {@code throws
-     * ServletException}, etc. Without propagating these from the test method, Java requires them to
-     * be caught — but adding try/catch inside tests is verbose and hides assertion failures. The
-     * standard practice is to declare {@code throws Exception} on the test method itself, which Java
-     * accepts because JUnit 5 handles any throwable from a test method as a test failure.
-     */
     private static void ensureTestMethodsThrowException(CompilationUnit compilationUnit) {
         compilationUnit.findFirst(ClassOrInterfaceDeclaration.class).ifPresent(cls ->
             cls.getMethods().stream()
@@ -316,8 +231,6 @@ final class GeneratedTestSourceNormalizer {
         }
 
         for (String qualifiedName : COMMON_STATIC_IMPORTS) {
-            // JavaParser's addImport(name, static, asterisk) espera o nome SEM ".*"
-            // — ele mesmo concatena o ".*" baseado no parâmetro isAsterisk.
             String name = qualifiedName.endsWith(".*")
                     ? qualifiedName.substring(0, qualifiedName.length() - 2)
                     : qualifiedName;

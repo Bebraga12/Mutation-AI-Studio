@@ -18,29 +18,14 @@ public class FileSystemProjectClassScannerAdapter implements ProjectClassScanner
 
     private static final Path MAIN_JAVA_PATH = Paths.get("src", "main", "java");
 
-    /**
-     * Detecta declarações de interface ou annotation type (@interface).
-     * Exemplos: "public interface Foo", "public @interface Bar", "interface Baz"
-     */
     private static final Pattern INTERFACE_OR_ANNOTATION_TYPE = Pattern.compile(
             "(?m)^\\s*(?:public\\s+)?(?:abstract\\s+|sealed\\s+|non-sealed\\s+)*@?interface\\s+\\w"
     );
 
-    /**
-     * Detecta declarações de enum.
-     * Exemplo: "public enum Status"
-     */
     private static final Pattern ENUM_DECLARATION = Pattern.compile(
             "(?m)^\\s*(?:public\\s+)?enum\\s+\\w"
     );
 
-    /**
-     * Detecta declarações de método (não-campo). Exemplos:
-     *   public String getFoo()
-     *   private boolean isValid(String s)
-     *   @Override public List<Autor> findAll()
-     * NÃO casa com declarações de campo (sem parênteses) nem com "public class Foo {".
-     */
     private static final Pattern HAS_DECLARED_METHOD = Pattern.compile(
             "(?m)^[ \\t]*(?:@\\w+(?:\\([^)\\n]*\\))?[ \\t]*)?(?:public|private|protected)[ \\t]+" +
             "(?:(?:static|final|synchronized|abstract|native)[ \\t]+)*" +
@@ -79,44 +64,30 @@ public class FileSystemProjectClassScannerAdapter implements ProjectClassScanner
         return !fileName.equals("package-info.java") && !fileName.equals("module-info.java");
     }
 
-    /**
-     * Retorna true apenas para classes que fazem sentido como alvo de unit tests com Mockito.
-     * Exclui:
-     * - interfaces e annotation types (@interface) — não são instanciáveis
-     * - enums — não têm lógica de negócio injetável
-     * - entidades JPA (@Entity) — apenas dados, sem lógica de serviço
-     * - classe principal Spring Boot (@SpringBootApplication) — só ponto de entrada
-     * - Spring Data repositories (extends JpaRepository etc.) — contrato JPA, sem lógica
-     */
     private boolean isUnitTestable(Path sourcePath) {
         String content;
         try {
             content = Files.readString(sourcePath);
         } catch (IOException e) {
-            return true; // não conseguiu ler — inclui para não esconder
+            return true;
         }
 
-        // Interfaces e annotation types
         if (INTERFACE_OR_ANNOTATION_TYPE.matcher(content).find()) {
             return false;
         }
 
-        // Enums
         if (ENUM_DECLARATION.matcher(content).find()) {
             return false;
         }
 
-        // Entidades JPA — só dados, sem lógica testável
         if (content.contains("@Entity")) {
             return false;
         }
 
-        // Classe principal da aplicação Spring Boot
         if (content.contains("@SpringBootApplication")) {
             return false;
         }
 
-        // Spring Data repositories — interfaces geradas pelo framework
         if (content.contains("extends JpaRepository")
                 || content.contains("extends CrudRepository")
                 || content.contains("extends PagingAndSortingRepository")
@@ -126,16 +97,10 @@ public class FileSystemProjectClassScannerAdapter implements ProjectClassScanner
             return false;
         }
 
-        // DTO/VO puro — tem anotações Lombok de dados mas nenhum estereótipo Spring
-        // e nenhum método declarado explicitamente na fonte. O Lombok gera getters/setters
-        // em tempo de compilação; não há lógica de negócio para testar com Mockito.
         if (isPureLombokDataClass(content)) {
             return false;
         }
 
-        // Configuração Spring Security — @EnableWebSecurity marca classes que constroem
-        // a cadeia de filtros via HttpSecurity DSL; esses builders usam generics complexos
-        // e acesso a contexto Spring que não podem ser mockados com Mockito padrão.
         if (content.contains("@EnableWebSecurity")) {
             return false;
         }
@@ -143,11 +108,6 @@ public class FileSystemProjectClassScannerAdapter implements ProjectClassScanner
         return true;
     }
 
-    /**
-     * Retorna true para classes que são apenas contêineres de dados Lombok sem lógica
-     * de negócio: têm anotações como @Getter/@Setter/@Data mas nenhum estereótipo Spring
-     * e nenhum método declarado no código-fonte.
-     */
     private boolean isPureLombokDataClass(String content) {
         boolean hasLombokDataAnnotation = content.contains("@Getter")
                 || content.contains("@Setter")
@@ -156,7 +116,6 @@ public class FileSystemProjectClassScannerAdapter implements ProjectClassScanner
             return false;
         }
 
-        // Se tiver estereótipo Spring, é um componente gerenciado — inclui para teste
         boolean hasSpringStereotype = content.contains("@Service")
                 || content.contains("@Component")
                 || content.contains("@Controller")
@@ -167,7 +126,6 @@ public class FileSystemProjectClassScannerAdapter implements ProjectClassScanner
             return false;
         }
 
-        // Se tiver métodos declarados explicitamente, tem lógica que vale testar
         return !HAS_DECLARED_METHOD.matcher(content).find();
     }
 

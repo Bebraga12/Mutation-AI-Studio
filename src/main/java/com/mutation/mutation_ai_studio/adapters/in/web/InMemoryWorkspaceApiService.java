@@ -640,10 +640,6 @@ public class InMemoryWorkspaceApiService {
             int beforeCoverage = hasPreviousMetrics ? previousCoverageRate : currentCoverageRate;
             int beforeSurvivorOfCovered = hasPreviousMetrics ? previousSurvivorOfCoveredRate : currentSurvivorOfCoveredRate;
 
-            // Contagens absolutas da rodada ANTERIOR. O summary cache ainda guarda o resultado da
-            // rodada passada neste ponto (o novo so e salvo no fim de updateWorkspaceAfterRun), entao
-            // da pra preencher "Mutantes eliminados/sobreviventes/Sem cobertura" do lado "Antes" em vez
-            // de mostrar n/d. Sem rodada anterior, usa as contagens atuais (antes == depois, sem diff falso).
             Path previousSummaryRoot = Paths.get(normalize(currentProject.repositoryPath()))
                     .toAbsolutePath().normalize();
             Optional<PitestSummaryCache> previousSummary = hasPreviousMetrics
@@ -800,7 +796,6 @@ public class InMemoryWorkspaceApiService {
 
             updateWorkspaceAfterRun(projectId, executionState, execution, pitMetrics, true);
         } catch (Exception ignored) {
-            // Baseline oportunista; falha nao deve quebrar deteccao do Maven.
         }
     }
 

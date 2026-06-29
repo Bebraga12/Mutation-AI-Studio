@@ -53,7 +53,6 @@ final class CommandExecutor {
             try {
                 Files.deleteIfExists(logFile);
             } catch (Exception ignored) {
-                // Ignora limpeza de arquivo temporario.
             }
         }
     }

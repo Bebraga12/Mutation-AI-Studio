@@ -33,11 +33,6 @@ public class GenerateTestFromPromptService implements GenerateTestFromPromptUseC
             try {
                 code = aiTestGeneratorPort.generateTestCode(prompt);
             } catch (RuntimeException ex) {
-                // O modelo local (qwen2.5-coder:7b) pode falhar de forma intermitente
-                // (timeout, resposta vazia, conexao recusada). Um erro pontual aqui nao deve
-                // derrubar o lote inteiro: usamos um teste minimo de fallback para esta classe
-                // e seguimos com as demais. ExecuteGeneratedTestBatchService ainda tentara
-                // refinar/recuperar a partir desse ponto.
                 code = GeneratedTestFallbackFactory.generate(prompt);
             }
             String sanitizedCode = GeneratedTestSourceNormalizer.normalize(code, prompt);

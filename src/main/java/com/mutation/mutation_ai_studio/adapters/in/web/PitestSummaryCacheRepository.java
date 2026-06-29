@@ -48,7 +48,6 @@ public class PitestSummaryCacheRepository {
                             durationMs,
                             java.time.Instant.now().toString()));
         } catch (Exception ignored) {
-            // Cache auxiliar; falha nao deve bloquear fluxo principal.
         }
     }
 
@@ -73,7 +72,6 @@ public class PitestSummaryCacheRepository {
                             durationMs,
                             java.time.Instant.now().toString()));
         } catch (Exception ignored) {
-            // Cache auxiliar; falha nao deve bloquear fluxo principal.
         }
     }
 }

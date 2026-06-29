@@ -25,10 +25,6 @@ final class GeneratedTestSanitizer {
         return sanitized.trim();
     }
 
-    /**
-     * Removes thinking blocks used by reasoning models (e.g. qwen3, deepseek-r1).
-     * Strips content between <think> and </think> tags before processing the code.
-     */
     private static String stripThinkingBlocks(String text) {
         String result = text;
         while (true) {

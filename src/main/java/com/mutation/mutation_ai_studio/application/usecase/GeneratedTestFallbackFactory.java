@@ -23,9 +23,6 @@ final class GeneratedTestFallbackFactory {
         return generateMockito(prompt);
     }
 
-    /**
-     * Fallback para classes COM dependências: smoke test com Mockito (@InjectMocks).
-     */
     private static String generateMockito(ClassTestPrompt prompt) {
         StringBuilder builder = new StringBuilder();
         builder.append("package ").append(prompt.analysis().packageName()).append(";\n\n");
@@ -66,11 +63,6 @@ final class GeneratedTestFallbackFactory {
         return builder.toString();
     }
 
-    /**
-     * Fallback para classes SEM dependências (POJOs/entities/exceptions): instancia o alvo
-     * diretamente, sem Mockito. Para exceptions usa o construtor com mensagem; caso contrário
-     * tenta o construtor sem argumentos.
-     */
     private static String generatePlain(ClassTestPrompt prompt) {
         String className = prompt.className();
         boolean isException = className.endsWith("Exception")
@@ -97,10 +89,8 @@ final class GeneratedTestFallbackFactory {
         if (isException) {
             builder.append("        ").append(className).append(" subject = new ").append(className).append("(\"mensagem de teste\");\n");
         } else if (hasNoArgConstructor || !prompt.sourceCode().contains("public " + className + "(")) {
-            // Sem construtor explícito (Java fornece o padrão) ou com no-arg explícito.
             builder.append("        ").append(className).append(" subject = new ").append(className).append("();\n");
         } else {
-            // Última tentativa: no-arg mesmo assim (melhor esforço para o smoke test).
             builder.append("        ").append(className).append(" subject = new ").append(className).append("();\n");
         }
         builder.append("        assertNotNull(subject);\n");

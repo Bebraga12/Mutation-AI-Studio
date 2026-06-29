@@ -22,7 +22,6 @@ final class MavenResolver {
     ApiMavenDetectionResult resolve(String preferredPath, String repositoryPath) {
         Set<String> candidates = new LinkedHashSet<>();
 
-        // 1. mvnw do próprio projeto (mais confiável — mesma versão do build)
         if (!normalize(repositoryPath).isBlank()) {
             Path repo = Paths.get(repositoryPath).toAbsolutePath().normalize();
             if (IS_WINDOWS) {
@@ -31,18 +30,14 @@ final class MavenResolver {
             candidates.add(repo.resolve("mvnw").toString());
         }
 
-        // 2. Caminho informado manualmente
         if (!normalize(preferredPath).isBlank()) {
             candidates.add(normalize(preferredPath));
         }
 
-        // 3. Variáveis de ambiente M2_HOME / MAVEN_HOME
         addEnvMavenCandidates(candidates);
 
-        // 4. which/where no PATH
         addSystemMavenCandidates(candidates);
 
-        // 5. Cache do Maven Wrapper em ~/.m2/wrapper/dists
         addMavenWrapperCandidates(candidates);
 
         for (String candidate : candidates) {
@@ -122,12 +117,10 @@ final class MavenResolver {
     }
 
     private String resolveVersionByRunning(String mavenPath) {
-        // Tenta extrair versão do caminho primeiro (mais rápido)
         Pattern pathPattern = Pattern.compile("apache-maven-(\\d+\\.\\d+\\.\\d+)", Pattern.CASE_INSENSITIVE);
         Matcher pathMatcher = pathPattern.matcher(mavenPath);
         if (pathMatcher.find()) return pathMatcher.group(1);
 
-        // Executa o binário com --version
         try {
             ProcessBuilder pb = new ProcessBuilder(mavenPath, "--version");
             pb.redirectErrorStream(true);

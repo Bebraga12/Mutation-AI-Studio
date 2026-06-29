@@ -134,7 +134,7 @@ final class PitestReportLoader {
                     case "KILLED" -> killed++;
                     case "SURVIVED" -> survived++;
                     case "NO_COVERAGE" -> noCoverage++;
-                    default -> { /* TIMED_OUT, RUN_ERROR etc. ignorados na contagem */ }
+                    default -> {  }
                 }
             }
 

@@ -79,7 +79,6 @@ public class GeneratedTestStructuralValidator {
                 || !candidate.prompt().analysis().fieldDependencies().isEmpty();
 
         if (hasDependencies) {
-            // Classes com colaboradores injetados precisam do alvo em @InjectMocks (teste com Mockito).
             List<FieldDeclaration> injectMocksFields = primaryClass.getFields().stream()
                     .filter(field -> field.isAnnotationPresent("InjectMocks"))
                     .toList();
@@ -92,10 +91,6 @@ public class GeneratedTestStructuralValidator {
                 }
             }
         } else {
-            // Sem dependências injetadas: o teste deve OU instanciar a classe alvo diretamente
-            // (new ClassName(...)) OU declará-la em @InjectMocks (ambos compilam e funcionam).
-            // Exigir @InjectMocks rígido rejeitava POJOs válidos; exigir só instanciação rejeitava
-            // classes sem-dep que usam @InjectMocks legitimamente.
             boolean instantiatesTarget = compilationUnit.findAll(com.github.javaparser.ast.expr.ObjectCreationExpr.class).stream()
                     .anyMatch(creation -> creation.getType().getNameAsString().equals(candidate.className()));
             boolean injectsTarget = primaryClass.getFields().stream()
@@ -108,10 +103,6 @@ public class GeneratedTestStructuralValidator {
             }
         }
 
-        // Só barramos chamadas a métodos DECLARADOS como private na classe alvo — esses são
-        // erro de compilação real. Métodos herdados públicos (getMessage, toString, equals…)
-        // não aparecem em publicMethods mas são perfeitamente chamáveis; barrá-los gerava
-        // falsos negativos (ex.: subject.getMessage() numa exception).
         Set<String> privateMethodNames = Set.copyOf(candidate.prompt().analysis().nonPublicMethodNames());
         List<String> forbiddenSubjectCalls = compilationUnit.findAll(MethodCallExpr.class).stream()
                 .filter(call -> call.getScope().isPresent())

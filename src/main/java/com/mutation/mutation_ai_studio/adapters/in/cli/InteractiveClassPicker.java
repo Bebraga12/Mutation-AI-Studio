@@ -64,7 +64,6 @@ class InteractiveClassPicker {
 
     private int extractModelSize(String model) {
         String lower = model.toLowerCase(Locale.ROOT);
-        // match patterns like "7b", "14b", "32b", "70b"
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)b").matcher(lower);
         if (m.find()) {
             try { return Integer.parseInt(m.group(1)); } catch (NumberFormatException ignored) {}
@@ -73,8 +72,7 @@ class InteractiveClassPicker {
     }
 
     private List<JavaClassCandidate> readSelection(List<JavaClassCandidate> all, Consumer<List<JavaClassCandidate>> onSelected) {
-        // Do not close the Scanner — closing it closes System.in.
-        Scanner scanner = new Scanner(System.in); // NOSONAR
+        Scanner scanner = new Scanner(System.in);
         while (true) {
             System.out.print("→ ");
             String input = scanner.nextLine().trim().replaceAll("\\s+", ",");
@@ -161,8 +159,6 @@ class InteractiveClassPicker {
         }
         return result;
     }
-
-    // ── Cost heuristic ────────────────────────────────────────────────────────
 
     private enum Cost {
         LOW   ("●○○ baixo"),

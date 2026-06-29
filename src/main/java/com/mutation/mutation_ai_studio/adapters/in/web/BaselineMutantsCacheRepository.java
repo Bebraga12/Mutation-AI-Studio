@@ -43,7 +43,6 @@ public class BaselineMutantsCacheRepository {
             Files.createDirectories(stateFile.getParent());
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(stateFile.toFile(), perClassMutantCounts);
         } catch (Exception ignored) {
-            // Cache auxiliar; falha nao deve bloquear fluxo principal.
         }
     }
 }

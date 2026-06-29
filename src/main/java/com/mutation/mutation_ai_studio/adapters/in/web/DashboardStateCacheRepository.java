@@ -44,7 +44,6 @@ public class DashboardStateCacheRepository {
                             state.durationMs(),
                             Instant.now().toString()));
         } catch (Exception ignored) {
-            // Cache auxiliar; falha nao deve bloquear fluxo principal.
         }
     }
 
@@ -64,7 +63,6 @@ public class DashboardStateCacheRepository {
                             durationMs,
                             Instant.now().toString()));
         } catch (Exception ignored) {
-            // Cache auxiliar; falha nao deve bloquear fluxo principal.
         }
     }
 }

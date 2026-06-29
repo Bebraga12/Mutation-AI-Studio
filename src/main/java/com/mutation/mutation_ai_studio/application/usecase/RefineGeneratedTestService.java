@@ -54,7 +54,6 @@ public class RefineGeneratedTestService {
                 .anyMatch(error -> error.toLowerCase().contains("expected:") || error.toLowerCase().contains("but was:"));
         boolean hasWantedButNotInvoked = feedback.errors().stream()
                 .anyMatch(error -> error.toLowerCase().contains("wanted but not invoked"));
-        // Distinguish: assertion on HTTP status (wrong behavior modeled) vs. argument matcher issue
         boolean hasStatusCodeMismatch = hasAssertionMismatch && feedback.errors().stream()
                 .anyMatch(error -> error.toLowerCase().contains("ok") && error.toLowerCase().contains("expected:")
                         || error.toLowerCase().contains("unauthorized") || error.toLowerCase().contains("forbidden")
@@ -97,14 +96,9 @@ public class RefineGeneratedTestService {
                 .anyMatch(error -> error.toLowerCase().contains("incompatible types"));
         boolean hasWrongHandlerType = hasIncompatibleTypes && feedback.errors().stream()
                 .anyMatch(error -> error.toLowerCase().contains("constraintviolation") || error.toLowerCase().contains("methodargumentnotvalid"));
-        // "incompatible types: Optional<X> cannot be converted to X" (or vice versa) — the AI
-        // wrapped/unwrapped a collaborator's return value in Optional when the method body's
-        // local variable type says otherwise (e.g. `Livro x = service.findByIdLivro(id)` returns
-        // Livro, not Optional<Livro>, but the test stubbed thenReturn(Optional.of(livro))).
         boolean hasOptionalTypeMismatch = hasIncompatibleTypes && !hasWrongHandlerType
                 && feedback.errors().stream()
                         .anyMatch(error -> error.contains("Optional<") && error.toLowerCase().contains("cannot be converted"));
-        // Extract entity class name from "Optional<com.example.Entity> is not applicable" errors
         String wrongReturnEntityHint = feedback.errors().stream()
                 .filter(e -> e.contains("thenReturn") && e.contains("Optional<"))
                 .map(e -> {

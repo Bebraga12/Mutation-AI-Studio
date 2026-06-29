@@ -19,7 +19,6 @@ class TestExecutionFeedbackTest {
 
     @BeforeEach
     void setUp() {
-        // No setup needed for this test class
     }
 
     @Test

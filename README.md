@@ -28,111 +28,106 @@ Tudo com execução local, sem dependência de cloud.
 
 ---
 
-## Como rodar
+## Instalação e uso
+
+O uso é pelo fluxo manual abaixo. Ele funciona igual em qualquer distro Linux,
+macOS e Windows.
+
+### 1. Pré-requisitos
+
+Você precisa de três coisas: **Git**, **JDK 21** e **Ollama** (com um modelo baixado).
+O Maven já vem embutido no projeto via wrapper (`./mvnw`), não precisa instalar.
+
+| Sistema | JDK 21 | Ollama |
+| --- | --- | --- |
+| Arch / Manjaro | `sudo pacman -S jdk21-openjdk` | `sudo pacman -S ollama` (ou script oficial abaixo) |
+| Debian / Ubuntu | `sudo apt install openjdk-21-jdk` | `curl -fsSL https://ollama.com/install.sh \| sh` |
+| Fedora | `sudo dnf install java-21-openjdk-devel` | `curl -fsSL https://ollama.com/install.sh \| sh` |
+| macOS (Homebrew) | `brew install openjdk@21` | `brew install ollama` |
+| Windows (winget) | `winget install EclipseAdoptium.Temurin.21.JDK` | `winget install Ollama.Ollama` |
+
+Confirme o Java (precisa ser 21+):
 
 ```bash
-./mvnw clean install
+java -version
 ```
 
-## Instalacao
+### 2. Baixar um modelo no Ollama
 
-O projeto inclui um instalador interativo para preparar a CLI em uma maquina nova.
+Deixe o servidor do Ollama rodando e baixe um modelo de código:
 
 ```bash
-bash scripts/install.sh
+ollama serve        # deixe rodando em um terminal (no macOS/Windows o app já sobe sozinho)
+ollama pull qwen2.5-coder:7b
 ```
 
-O instalador faz o seguinte:
+Alternativa mais leve/rápida: `ollama pull deepseek-coder:6.7b`.
 
-- compila o projeto e instala o launcher `mutation-ai`
-- executa `mutation-ai scan .` na raiz do projeto antes de continuar
-- instala o Ollama pela distribuicao oficial, se necessario
-- pergunta qual modelo usar
-- faz o download do modelo escolhido
-- grava a configuracao em `~/.config/mutation-ai/config.env`
-
-Se preferir, o instalador tambem pode criar um link em `/usr/local/bin` usando `sudo`.
-
-## Usar a CLI
-
-Depois da instalacao, use o comando de qualquer diretorio:
+### 3. Clonar e compilar
 
 ```bash
-mutation-ai scan .
-mutation-ai select .
-mutation-ai status .
+git clone <url-do-repositorio> Mutation-AI-Studio
+cd Mutation-AI-Studio
+./mvnw clean package -DskipTests      # Windows: mvnw.cmd clean package -DskipTests
 ```
 
-### Ajuste manual do PATH
+Isso gera `target/mutation-ai-studio-0.0.1-SNAPSHOT.jar`.
 
-Se quiser carregar o ambiente manualmente no terminal atual:
+### 4. Rodar a CLI
+
+**Linux / macOS** — use o launcher da raiz do projeto (ele localiza o jar e, se
+faltar, compila automaticamente):
+
+```bash
+./mutation-ai scan .
+./mutation-ai select .
+./mutation-ai status .
+```
+
+**Windows (PowerShell ou CMD)** — rode o jar direto:
+
+```powershell
+java -jar target\mutation-ai-studio-0.0.1-SNAPSHOT.jar scan .
+```
+
+### 5. (Opcional) Chamar de qualquer diretório
+
+Para não precisar do `./` nem estar dentro da pasta do projeto:
+
+**Linux / macOS** — carregue o ambiente no terminal atual:
 
 ```bash
 source scripts/env.sh
 mutation-ai scan .
 ```
 
-Para deixar permanente, adicione `source <caminho>/Mutation-AI-Studio/scripts/env.sh` no seu `~/.zshrc` ou `~/.bashrc`.
-
-### Alterar o modelo da IA
-
-O modelo usado pelo Ollama fica em:
+Para deixar permanente, adicione ao seu `~/.zshrc` ou `~/.bashrc`:
 
 ```bash
+source /caminho/para/Mutation-AI-Studio/scripts/env.sh
+```
+
+**Windows** — crie um alias/função de PowerShell no seu `$PROFILE`:
+
+```powershell
+function mutation-ai { java -jar "C:\caminho\para\Mutation-AI-Studio\target\mutation-ai-studio-0.0.1-SNAPSHOT.jar" @args }
+```
+
+### Configurar o modelo da IA
+
+A CLI lê o modelo do arquivo de configuração (opcional):
+
+```bash
+# Linux/macOS
 ~/.config/mutation-ai/config.env
 ```
 
-Voce tambem pode reinstalar e escolher outro modelo com `bash scripts/install.sh`.
+Conteúdo esperado:
 
-### Instalação no Windows
-
-No Windows, o instalador local fica em `scripts/windows/install.ps1` e instala o app em `%LOCALAPPDATA%\Mutation AI Studio`.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/windows/install.ps1
+```bash
+MUTATION_AI_OLLAMA_BASE_URL=http://localhost:11434
+MUTATION_AI_OLLAMA_MODEL=qwen2.5-coder:7b
 ```
-
-Se quiser sobrescrever uma instalação anterior:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/windows/install.ps1 -Force
-```
-
-Desinstalação:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/windows/uninstall.ps1
-```
-
-O instalador adiciona `mutation-ai` ao `PATH` do usuário apontando para um launcher `.cmd`.
-
-### Gerar instalador `.exe` no Windows
-
-Se você estiver em um Windows com JDK 21 + WiX Toolset instalado, pode gerar um instalador nativo com `jpackage`:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/windows/package-installer.ps1
-```
-
-Ou, se preferir o wrapper `.cmd`:
-
-```bat
-scripts\windows\package-installer.cmd
-```
-
-Saída esperada:
-- um instalador `.exe` em `target/windows-installer/`
-- pacote com launcher do Spring Boot embutido
-
-Se quiser recriar do zero:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/windows/package-installer.ps1 -Force
-```
-
-Observação:
-- esse passo precisa ser executado no Windows
-- o `jpackage` para `.exe` depende do WiX Toolset 3.11+ instalado
 
 ---
 

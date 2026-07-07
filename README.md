@@ -66,7 +66,7 @@ Alternativa mais leve/rápida: `ollama pull deepseek-coder:6.7b`.
 ### 3. Clonar e compilar
 
 ```bash
-git clone <url-do-repositorio> Mutation-AI-Studio
+git clone https://github.com/Bebraga12/Mutation-AI-Studio
 cd Mutation-AI-Studio
 ./mvnw clean package -DskipTests      # Windows: mvnw.cmd clean package -DskipTests
 ```
